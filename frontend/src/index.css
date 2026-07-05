@@ -1,0 +1,221 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── Base ──────────────────────────────────────────────────── */
+@layer base {
+  :root { color-scheme: dark; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    @apply bg-bg text-text-primary antialiased;
+    font-feature-settings: 'cv11', 'ss01', 'ss03';
+  }
+
+  ::selection {
+    background-color: rgba(129, 140, 248, 0.28);
+    color: #E2E8F0;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar        { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track  { background: #0F1018; }
+  ::-webkit-scrollbar-thumb  { background: #2D3055; border-radius: 99px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(129,140,248,0.5); }
+}
+
+/* ─── Components ────────────────────────────────────────────── */
+@layer components {
+
+  /* Glass surfaces */
+  .glass {
+    @apply bg-bg-card/80 backdrop-blur-md border border-border;
+  }
+  .glass-elevated {
+    @apply bg-bg-elevated/90 backdrop-blur-xl border border-border-strong;
+  }
+
+  /* Cards */
+  .card {
+    @apply bg-bg-card border border-border rounded-2xl shadow-card bg-card-shine;
+  }
+  .card-hover {
+    @apply card transition-all duration-250 ease-smooth
+           hover:border-border-strong hover:shadow-card-hover hover:-translate-y-0.5;
+  }
+  .card-interactive {
+    @apply card-hover cursor-pointer active:scale-[0.99] active:translate-y-0;
+  }
+
+  /* Buttons */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 font-semibold
+           rounded-xl transition-all duration-200 ease-smooth
+           active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed
+           select-none whitespace-nowrap;
+  }
+  .btn-primary {
+    @apply btn px-5 py-2.5 text-sm
+           bg-primary-500 text-white
+           hover:bg-primary-400 hover:shadow-glow-primary
+           focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:outline-none;
+  }
+  .btn-secondary {
+    @apply btn px-5 py-2.5 text-sm
+           bg-transparent border border-border text-text-secondary
+           hover:border-primary/40 hover:text-text-primary hover:bg-bg-elevated
+           focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:outline-none;
+  }
+  .btn-ghost {
+    @apply btn px-3 py-2 text-sm
+           text-text-secondary
+           hover:bg-bg-elevated hover:text-text-primary
+           focus-visible:ring-1 focus-visible:ring-border-strong focus-visible:outline-none;
+  }
+  .btn-lg {
+    @apply px-7 py-3.5 text-base rounded-2xl;
+  }
+  .btn-sm {
+    @apply px-3 py-1.5 text-xs rounded-lg;
+  }
+
+  /* Inputs */
+  .input {
+    @apply w-full bg-bg-surface border border-border rounded-xl px-4 py-3
+           text-sm text-text-primary placeholder:text-text-muted
+           focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary/50
+           transition-all duration-200 ease-smooth;
+  }
+  .label {
+    @apply block text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1.5;
+  }
+
+  /* Badges */
+  .badge {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full
+           text-xs font-semibold tracking-wide;
+  }
+  .badge-primary  { @apply badge bg-primary/15   text-primary-300   border border-primary/20; }
+  .badge-mentor   { @apply badge bg-mentor/10    text-mentor        border border-mentor/20; }
+  .badge-examiner { @apply badge bg-examiner/10  text-examiner      border border-examiner/20; }
+  .badge-coach    { @apply badge bg-coach/10     text-coach         border border-coach/20; }
+  .badge-resource { @apply badge bg-resource/10  text-resource      border border-resource/20; }
+  .badge-reflection { @apply badge bg-reflection/10 text-reflection border border-reflection/20; }
+
+  /* Prose (lesson content) */
+  .prose-lesson {
+    @apply prose prose-invert prose-sm max-w-none
+           prose-headings:font-bold prose-headings:text-text-primary prose-headings:tracking-tight
+           prose-p:text-text-secondary prose-p:leading-relaxed
+           prose-li:text-text-secondary
+           prose-strong:text-text-primary
+           prose-code:font-mono prose-code:text-primary-300
+           prose-code:bg-bg-surface prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-md
+           prose-code:before:content-none prose-code:after:content-none
+           prose-pre:bg-bg-surface prose-pre:border prose-pre:border-border prose-pre:rounded-xl
+           prose-a:text-primary-400 prose-a:no-underline hover:prose-a:underline
+           prose-blockquote:border-l-primary/40 prose-blockquote:text-text-secondary
+           prose-hr:border-border;
+  }
+
+  /* Section headers */
+  .section-heading {
+    @apply text-2xl font-bold text-text-primary tracking-tight;
+  }
+  .section-subheading {
+    @apply text-sm text-text-secondary mt-1 leading-relaxed;
+  }
+
+  /* Dividers */
+  .divider {
+    @apply border-t border-border;
+  }
+  .divider-subtle {
+    @apply border-t border-border-subtle;
+  }
+}
+
+/* ─── Utilities ─────────────────────────────────────────────── */
+@layer utilities {
+
+  /* Text gradients */
+  .text-gradient {
+    @apply bg-clip-text text-transparent
+           bg-gradient-to-r from-primary-300 via-reflection to-mentor;
+  }
+  .text-gradient-primary {
+    @apply bg-clip-text text-transparent
+           bg-gradient-to-r from-primary-300 to-primary-500;
+  }
+
+  /* Mesh background */
+  .mesh-bg {
+    background-image:
+      radial-gradient(at 20% 10%, rgba(99,102,241,0.07)  0px, transparent 50%),
+      radial-gradient(at 80% 5%,  rgba(192,132,252,0.05) 0px, transparent 50%),
+      radial-gradient(at 5%  60%, rgba(52,211,153,0.05)  0px, transparent 50%),
+      radial-gradient(at 90% 55%, rgba(34,211,238,0.04)  0px, transparent 50%),
+      radial-gradient(at 50% 95%, rgba(99,102,241,0.06)  0px, transparent 50%);
+  }
+
+  /* Animation delays */
+  .delay-75  { animation-delay:  75ms; }
+  .delay-100 { animation-delay: 100ms; }
+  .delay-150 { animation-delay: 150ms; }
+  .delay-200 { animation-delay: 200ms; }
+  .delay-300 { animation-delay: 300ms; }
+  .delay-500 { animation-delay: 500ms; }
+  .delay-700 { animation-delay: 700ms; }
+
+  /* Shimmer skeleton */
+  .skeleton {
+    @apply bg-bg-elevated rounded-lg animate-shimmer;
+    background-size: 200% 100%;
+    background-image: linear-gradient(
+      90deg,
+      rgba(255,255,255,0.03) 25%,
+      rgba(255,255,255,0.07) 37%,
+      rgba(255,255,255,0.03) 63%
+    );
+  }
+
+  /* Hide scrollbar */
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+  /* Custom range slider — used by TimeStep */
+  .time-slider { -webkit-appearance: none; appearance: none; outline: none; cursor: pointer; }
+  .time-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    background: #818CF8;
+    border: 2.5px solid #C7D2FE;
+    box-shadow: 0 0 0 4px rgba(129,140,248,0.18);
+    cursor: pointer;
+    transition: box-shadow 0.2s ease, transform 0.15s ease;
+  }
+  .time-slider::-webkit-slider-thumb:hover {
+    box-shadow: 0 0 0 7px rgba(129,140,248,0.22);
+    transform: scale(1.08);
+  }
+  .time-slider::-moz-range-thumb {
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    background: #818CF8;
+    border: 2.5px solid #C7D2FE;
+    box-shadow: 0 0 0 4px rgba(129,140,248,0.18);
+    cursor: pointer;
+  }
+
+  /* Glow borders */
+  .border-glow-primary    { @apply border border-primary/30 shadow-glow-sm; }
+  .border-glow-mentor     { @apply border border-mentor/30 shadow-glow-mentor; }
+  .border-glow-examiner   { @apply border border-examiner/30 shadow-glow-examiner; }
+  .border-glow-coach      { @apply border border-coach/30 shadow-glow-coach; }
+  .border-glow-resource   { @apply border border-resource/30 shadow-glow-resource; }
+  .border-glow-reflection { @apply border border-reflection/30 shadow-glow-reflection; }
+}
