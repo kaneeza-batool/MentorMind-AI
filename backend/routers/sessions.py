@@ -1,7 +1,7 @@
 import logging
 from fastapi import APIRouter, HTTPException
 from models.schemas import CreateSessionRequest, SessionResponse, TopicSchema
-from models.state import LearningSession, Topic
+from models.state import Topic
 from agents.strategist_agent import StrategistAgent
 from tools import storage
 

@@ -1,13 +1,13 @@
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from dotenv import load_dotenv
 import os
 
-load_dotenv()
-
+from dotenv import load_dotenv
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from routers import sessions, learning, quiz, explain, reflection, resources, progress
+
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(name)s  %(message)s")
