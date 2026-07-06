@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   BarChart2, CheckCircle2, Target, TrendingUp, Zap,
-  BookOpen, Brain, Sparkles, ArrowRight, Loader2,
+  BookOpen, Brain, Sparkles, ArrowRight, Loader2, Activity, Layers,
 } from 'lucide-react'
 import useLearningStore from '@/store/learningStore'
 import { progress as progressApi } from '@/services/api'
@@ -259,8 +259,8 @@ export default function MissionControl() {
           />
         )}
 
-        {/* Stats grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6" aria-label="Learning statistics">
+        {/* Stats grid — 4 primary + 3 enhanced */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3" aria-label="Learning statistics">
           <StatCard
             icon={TrendingUp}
             label="Progress"
@@ -288,6 +288,38 @@ export default function MissionControl() {
             value={dashboard.streak || '—'}
             accent="reflection"
             delay={0.20}
+          />
+        </div>
+
+        <div className="grid grid-cols-3 gap-3 mb-6" aria-label="Enhanced learning metrics">
+          <StatCard
+            icon={Target}
+            label="Mastery"
+            value={
+              dashboard.overall_mastery > 0
+                ? `${dashboard.overall_mastery.toFixed(0)}%`
+                : '—'
+            }
+            accent="examiner"
+            delay={0.25}
+          />
+          <StatCard
+            icon={Layers}
+            label="Remaining"
+            value={dashboard.topics_remaining ?? (dashboard.total_topics - dashboard.topics_completed)}
+            accent="primary"
+            delay={0.30}
+          />
+          <StatCard
+            icon={Activity}
+            label="Velocity"
+            value={
+              dashboard.learning_velocity > 0
+                ? `${dashboard.learning_velocity.toFixed(1)}/day`
+                : '—'
+            }
+            accent="mentor"
+            delay={0.35}
           />
         </div>
 

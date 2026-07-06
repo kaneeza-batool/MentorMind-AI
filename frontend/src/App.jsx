@@ -7,6 +7,7 @@ import Quiz from '@/pages/Quiz'
 import Reflection from '@/pages/Reflection'
 import Resources from '@/pages/Resources'
 import MissionControl from '@/pages/MissionControl'
+import JourneyComplete from '@/pages/JourneyComplete'
 
 export default function App() {
   return (
@@ -18,11 +19,12 @@ export default function App() {
 
         {/* App shell — sidebar + header */}
         <Route element={<AppShell />}>
-          <Route path="/learn"           element={<Learning />} />
-          <Route path="/quiz"            element={<Quiz />} />
-          <Route path="/reflection"      element={<Reflection />} />
-          <Route path="/resources"       element={<Resources />} />
-          <Route path="/mission-control" element={<MissionControl />} />
+          <Route path="/learn"             element={<Learning />} />
+          <Route path="/quiz"              element={<Quiz />} />
+          <Route path="/reflection"        element={<Reflection />} />
+          <Route path="/resources"         element={<Resources />} />
+          <Route path="/mission-control"   element={<MissionControl />} />
+          <Route path="/journey-complete"  element={<JourneyComplete />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

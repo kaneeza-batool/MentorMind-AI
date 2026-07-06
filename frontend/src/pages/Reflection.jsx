@@ -3,13 +3,15 @@ import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Sparkles, CheckCircle2, ArrowRight, BarChart2,
-  RotateCcw, Loader2, AlertTriangle,
+  RotateCcw, Loader2, AlertTriangle, Library,
 } from 'lucide-react'
 import useLearningStore from '@/store/learningStore'
 import useReflection from '@/hooks/useReflection'
+import useResources from '@/hooks/useResources'
 import ReflectionCard from '@/components/reflection/ReflectionCard'
 import StrengthWeakGrid from '@/components/reflection/StrengthWeakGrid'
 import NextStepPrompt from '@/components/reflection/NextStepPrompt'
+import ResourceFeed from '@/components/resources/ResourceFeed'
 
 // ── Confidence Meter ──────────────────────────────────────────────
 
@@ -85,6 +87,7 @@ export default function Reflection() {
     quizResults,
     reflection,
     reflectionHistory,
+    resources: storedResources,
     completeCurrentTopic,
   } = useLearningStore()
 
@@ -92,13 +95,13 @@ export default function Reflection() {
   const isLastTopic  = currentTopicIndex === curriculum.length - 1
 
   const { generateReflection, loading, error } = useReflection()
+  const { fetchResources, loading: resourcesLoading } = useResources()
 
   useEffect(() => {
     if (!sessionId || !currentTopic) {
       navigate('/learn', { replace: true })
       return
     }
-    // No quiz data and no cached reflection — redirect back to learn
     if (!quizResults && !reflectionHistory[currentTopic.id] && !reflection) {
       navigate('/learn', { replace: true })
       return
@@ -106,12 +109,21 @@ export default function Reflection() {
     generateReflection()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Fetch resources once the reflection is loaded, without blocking the UI
+  useEffect(() => {
+    if (reflection && currentTopic) {
+      fetchResources(currentTopic.id)
+    }
+  }, [reflection, currentTopic?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleContinue = () => {
     completeCurrentTopic()
-    navigate(isLastTopic ? '/mission-control' : '/learn')
+    navigate(isLastTopic ? '/journey-complete' : '/learn')
   }
 
   if (!sessionId || !currentTopic) return null
+
+  const topicResources = storedResources[currentTopic.id] ?? []
 
   return (
     <div className="h-full overflow-y-auto">
@@ -204,6 +216,22 @@ export default function Reflection() {
               {/* Personalized recommendation */}
               <NextStepPrompt recommendation={reflection.recommendation} />
 
+              {/* Recommended resources (fetched after reflection loads) */}
+              {(resourcesLoading || topicResources.length > 0) && (
+                <div className="rounded-xl border border-border bg-bg-card px-5 py-5">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Library size={13} className="text-resource" aria-hidden="true" />
+                    <span className="text-xs font-bold text-resource uppercase tracking-widest">
+                      Recommended Resources
+                    </span>
+                  </div>
+                  <ResourceFeed
+                    resources={topicResources}
+                    loading={resourcesLoading}
+                  />
+                </div>
+              )}
+
               {/* Action buttons */}
               <div className="flex flex-col sm:flex-row gap-3 pt-2" role="navigation" aria-label="Next steps">
                 <button
@@ -218,9 +246,9 @@ export default function Reflection() {
                 <button
                   onClick={handleContinue}
                   className="btn-primary btn-sm gap-1.5 sm:ml-auto"
-                  aria-label={isLastTopic ? 'View full dashboard' : 'Continue to next topic'}
+                  aria-label={isLastTopic ? 'Complete your journey' : 'Continue to next topic'}
                 >
-                  {isLastTopic ? 'View Full Dashboard' : 'Continue Learning'}
+                  {isLastTopic ? 'Complete Journey' : 'Continue Learning'}
                   <ArrowRight size={14} aria-hidden="true" />
                 </button>
               </div>
