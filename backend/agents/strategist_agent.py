@@ -121,7 +121,6 @@ class StrategistAgent:
         before the change; the caller is responsible for persisting the session.
         """
         from datetime import datetime, timezone
-        from models.state import Topic
 
         locked = [t for t in session.curriculum if t.status == "locked"]
         if not locked:

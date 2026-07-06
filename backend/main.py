@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import settings
+from routers import explain, learning, mcp, progress, quiz, reflection, resources, sessions
 from tools.storage import init_storage
 
 logger = logging.getLogger(__name__)
@@ -34,9 +35,6 @@ async def lifespan(app: FastAPI):
     # ── Shutdown ─────────────────────────────────────────────────
     logger.info("MentorMind AI shutting down.")
 
-
-from routers import sessions, learning, quiz, explain, reflection, resources, progress
-from routers import mcp
 
 app = FastAPI(
     title=settings.APP_NAME,
