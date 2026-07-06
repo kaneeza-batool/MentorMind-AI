@@ -327,21 +327,28 @@ function ErrorBanner({ message, onRetry, canRetry }) {
 // ── Complete Badge ────────────────────────────────────────────────
 
 function CompleteBadge() {
+  const navigate = useNavigate()
   return (
     <motion.div
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.25, duration: 0.45, ease: [0.34, 1.56, 0.64, 1] }}
-      className="mt-12 flex items-center justify-center gap-3 py-6 rounded-2xl
+      className="mt-12 flex items-center gap-4 px-6 py-5 rounded-2xl
                  bg-mentor/8 border border-mentor/20"
     >
-      <CheckCircle2 size={22} className="text-mentor" aria-hidden="true" />
-      <div>
+      <CheckCircle2 size={22} className="text-mentor flex-shrink-0" aria-hidden="true" />
+      <div className="flex-1">
         <p className="font-bold text-text-primary text-sm">Lesson complete!</p>
         <p className="text-xs text-text-muted mt-0.5">
-          Head to the Quiz tab to test your understanding
+          Test your understanding with a short quiz
         </p>
       </div>
+      <button
+        onClick={() => navigate('/quiz')}
+        className="btn-primary btn-sm flex-shrink-0"
+      >
+        Take Quiz →
+      </button>
     </motion.div>
   )
 }

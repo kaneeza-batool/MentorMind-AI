@@ -33,6 +33,8 @@ const useLearningStore = create((set, get) => ({
   quizQuestions:  [],
   quizResults:    null,
   pendingExplain: null,
+  quizLoading:    false,
+  quizFeedback:   {},   // { [topicId]: string } — cached AI feedback per topic
 
   // ── Progress ─────────────────────────────────────────────────
   mastery:    {},
@@ -87,13 +89,38 @@ const useLearningStore = create((set, get) => ({
   setWhyExplanation: (topicId, text) =>
     set((s) => ({ whyExplanation: { ...s.whyExplanation, [topicId]: text } })),
 
-  setQuizQuestions: (qs)      => set({ quizQuestions: qs, quizResults: null }),
-  setQuizResults:   (r)       => set({ quizResults: r }),
-  setPendingExplain:(p)       => set({ pendingExplain: p }),
+  setQuizQuestions:  (qs)      => set({ quizQuestions: qs, quizResults: null }),
+  setQuizResults:    (r)       => set({ quizResults: r }),
+  setPendingExplain: (p)       => set({ pendingExplain: p }),
+  setQuizLoading:    (v)       => set({ quizLoading: v }),
+  setQuizFeedback:   (topicId, text) =>
+    set((s) => ({ quizFeedback: { ...s.quizFeedback, [topicId]: text } })),
+
+  // Mark the current topic completed, unlock the next, and advance the index.
+  // Called when the learner passes the quiz and clicks "Next Topic".
+  completeCurrentTopic: () =>
+    set((s) => {
+      const i = s.currentTopicIndex
+      const updated = s.curriculum.map((t, idx) => {
+        if (idx === i)     return { ...t, status: 'completed' }
+        if (idx === i + 1) return { ...t, status: 'active' }
+        return t
+      })
+      return {
+        curriculum: updated,
+        currentTopicIndex: Math.min(i + 1, s.curriculum.length - 1),
+        lessonContent:  '',
+        lessonComplete: false,
+        streamError:    null,
+        quizQuestions:  [],
+        quizResults:    null,
+        reflection:     null,
+      }
+    }),
 
   updateMastery: (topicId, score) =>
     set((s) => ({ mastery: { ...s.mastery, [topicId]: score } })),
-  setWeakAreas: (areas)       => set({ weakAreas: areas }),
+  setWeakAreas: (areas) => set({ weakAreas: areas }),
 
   setResources: (topicId, list) =>
     set((s) => ({ resources: { ...s.resources, [topicId]: list } })),
@@ -118,6 +145,7 @@ const useLearningStore = create((set, get) => ({
       lessonComplete: false, streamError: null,
       lessonHistory: {}, whyExplanation: {},
       quizQuestions: [], quizResults: null, pendingExplain: null,
+      quizLoading: false, quizFeedback: {},
       mastery: {}, weakAreas: [], resources: {}, reflection: null,
     }),
 

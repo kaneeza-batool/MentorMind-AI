@@ -33,12 +33,22 @@ class LessonRequest(BaseModel):
 class QuizGenerateRequest(BaseModel):
     session_id: str
     topic_id:   str
-    difficulty: Optional[str] = "adaptive"  # easy | medium | hard | adaptive
+
+
+class QuizQuestion(BaseModel):
+    """Frontend-facing question — no answer field exposed before submission."""
+    id:      str
+    question: str
+    options:  list[str]   # exactly 4 clean option strings (no "A." prefix)
+
+
+class QuizGenerateResponse(BaseModel):
+    questions: list[QuizQuestion]
 
 
 class AnswerSubmission(BaseModel):
     question_id: str
-    answer:      str
+    answer:      int   # 0-based index into options list
 
 
 class QuizSubmitRequest(BaseModel):
@@ -47,31 +57,43 @@ class QuizSubmitRequest(BaseModel):
     answers:    list[AnswerSubmission]
 
 
+class QuizResultItem(BaseModel):
+    question_id:   str
+    correct:       bool
+    chosen_index:  int
+    correct_index: int
+    explanation:   str
+
+
+class QuizSubmitResponse(BaseModel):
+    score:         float   # percentage 0–100
+    total:         int
+    correct:       int
+    passed:        bool    # score >= 70
+    results:       list[QuizResultItem]
+    mastery_delta: float
+    weak_concepts: list[str]
+
+
+class QuizFeedbackRequest(BaseModel):
+    session_id:      str
+    topic_id:        str
+    score:           float
+    correct:         int
+    total:           int
+    wrong_questions: list[str]   # question texts for wrong answers
+
+
+class QuizFeedbackResponse(BaseModel):
+    feedback: str
+
+
+# Legacy schema kept for compatibility — not used by M6 router
 class QuestionSchema(BaseModel):
     id:      str
     text:    str
     options: list[str]
     type:    str = "multiple_choice"
-
-
-class QuizGenerateResponse(BaseModel):
-    questions: list[QuestionSchema]
-
-
-class QuizResultItem(BaseModel):
-    question_id:    str
-    correct:        bool
-    correct_answer: str
-    explanation:    str
-
-
-class QuizSubmitResponse(BaseModel):
-    score:          float
-    total:          int
-    correct:        int
-    results:        list[QuizResultItem]
-    mastery_delta:  float
-    weak_concepts:  list[str]
 
 
 # ── Explain ──────────────────────────────────────────────────────

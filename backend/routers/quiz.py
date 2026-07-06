@@ -1,63 +1,20 @@
+import logging
 from fastapi import APIRouter, HTTPException
 from models.schemas import (
-    QuizGenerateRequest, QuizGenerateResponse,
-    QuizSubmitRequest, QuizSubmitResponse,
-    QuestionSchema, QuizResultItem,
+    QuizGenerateRequest, QuizGenerateResponse, QuizQuestion,
+    QuizSubmitRequest, QuizSubmitResponse, QuizResultItem,
+    QuizFeedbackRequest, QuizFeedbackResponse,
 )
 from tools import storage
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/quiz")
 
-# In-memory quiz cache: session_id → { topic_id → correct_answers dict }
-_quiz_cache: dict[str, dict[str, dict[str, str]]] = {}
+PASS_THRESHOLD = 70.0
 
-MOCK_QUESTIONS = [
-    QuestionSchema(
-        id="q1",
-        text="Which of the following best describes the primary purpose of this concept?",
-        options=[
-            "A. To optimize memory allocation at runtime",
-            "B. To enable code reuse and logical organization",
-            "C. To handle network I/O asynchronously",
-            "D. To improve database query performance",
-        ],
-        type="multiple_choice",
-    ),
-    QuestionSchema(
-        id="q2",
-        text="What is the most important principle to follow when applying this pattern?",
-        options=[
-            "A. Maximize execution speed above all else",
-            "B. Always use global mutable state",
-            "C. Separate concerns and keep modules focused",
-            "D. Minimize the number of functions",
-        ],
-        type="multiple_choice",
-    ),
-    QuestionSchema(
-        id="q3",
-        text="Which approach most closely follows established best practices?",
-        options=[
-            "A. Deep nesting with many side effects",
-            "B. Tight coupling between unrelated modules",
-            "C. Pure functions with a single, clear responsibility",
-            "D. Duplicating logic across multiple files for flexibility",
-        ],
-        type="multiple_choice",
-    ),
-]
-
-CORRECT_ANSWERS: dict[str, str] = {
-    "q1": "B. To enable code reuse and logical organization",
-    "q2": "C. Separate concerns and keep modules focused",
-    "q3": "C. Pure functions with a single, clear responsibility",
-}
-
-EXPLANATIONS: dict[str, str] = {
-    "q1": "Code reuse and logical organization are the primary goals of this concept. By grouping related functionality, you reduce duplication and make the codebase easier to reason about.",
-    "q2": "Separation of concerns ensures each module has one reason to change. This makes systems more maintainable, testable, and scalable over time.",
-    "q3": "Pure functions with single responsibility are easier to test, debug, and compose. They minimize unexpected side effects and make intent clear to any reader.",
-}
+# session_id → topic_id → list of full question dicts (id, question, options, answer int, explanation)
+# Answers are never sent to the frontend — only used for server-side grading.
+_quiz_cache: dict[str, dict[str, list[dict]]] = {}
 
 
 @router.post("/generate", response_model=QuizGenerateResponse)
@@ -66,9 +23,30 @@ async def generate_quiz(body: QuizGenerateRequest):
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    # Cache correct answers for grading
-    _quiz_cache.setdefault(body.session_id, {})[body.topic_id] = CORRECT_ANSWERS
-    return QuizGenerateResponse(questions=MOCK_QUESTIONS)
+    topic = next((t for t in session.curriculum if t.id == body.topic_id), None)
+    if not topic:
+        raise HTTPException(status_code=404, detail="Topic not found")
+
+    from agents.examiner_agent import ExaminerAgent
+    try:
+        questions = await ExaminerAgent().generate_quiz(topic.title, session.level)
+    except Exception as exc:
+        logger.exception("Quiz generation failed for topic %s: %s", body.topic_id, exc)
+        raise HTTPException(
+            status_code=503,
+            detail="Quiz generation temporarily unavailable. Please retry.",
+        )
+
+    # Cache full question data (including answers) server-side
+    _quiz_cache.setdefault(body.session_id, {})[body.topic_id] = questions
+
+    # Return questions only — no answer or explanation exposed before submission
+    return QuizGenerateResponse(
+        questions=[
+            QuizQuestion(id=q["id"], question=q["question"], options=q["options"])
+            for q in questions
+        ]
+    )
 
 
 @router.post("/submit", response_model=QuizSubmitResponse)
@@ -77,45 +55,111 @@ async def submit_quiz(body: QuizSubmitRequest):
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    correct_answers = (
-        _quiz_cache.get(body.session_id, {}).get(body.topic_id, CORRECT_ANSWERS)
-    )
+    cached = _quiz_cache.get(body.session_id, {}).get(body.topic_id)
+    if not cached:
+        raise HTTPException(
+            status_code=409,
+            detail="No active quiz found for this topic. Generate a quiz first.",
+        )
 
+    answer_map = {q["id"]: q for q in cached}
     results: list[QuizResultItem] = []
     correct_count = 0
+    weak_concepts: list[str] = []
+
     for submission in body.answers:
-        expected = correct_answers.get(submission.question_id, "")
-        is_correct = submission.answer.strip() == expected.strip()
+        q_data = answer_map.get(submission.question_id)
+        if not q_data:
+            continue
+        correct_idx = int(q_data["answer"])
+        is_correct = submission.answer == correct_idx
         if is_correct:
             correct_count += 1
-        results.append(
-            QuizResultItem(
-                question_id=submission.question_id,
-                correct=is_correct,
-                correct_answer=expected,
-                explanation=EXPLANATIONS.get(
-                    submission.question_id,
-                    "Review the lesson material for more context on this concept.",
-                ),
-            )
-        )
+        else:
+            weak_concepts.append(submission.question_id)
+        results.append(QuizResultItem(
+            question_id=submission.question_id,
+            correct=is_correct,
+            chosen_index=submission.answer,
+            correct_index=correct_idx,
+            explanation=q_data["explanation"],
+        ))
 
     total = len(body.answers)
     score = round((correct_count / total) * 100, 1) if total > 0 else 0.0
-    mastery_delta = round(score * 0.4, 1)  # 40% weight toward topic mastery
+    passed = score >= PASS_THRESHOLD
+    mastery_delta = round(score * 0.4, 1)
 
-    # Update mastery in session
-    session.mastery[body.topic_id] = min(100.0, session.mastery.get(body.topic_id, 0) + mastery_delta)
-    weak_areas = [r.question_id for r in results if not r.correct]
-    if weak_areas:
-        session.weak_areas = list(set(session.weak_areas + weak_areas))
+    # Update session mastery
+    session.mastery[body.topic_id] = min(
+        100.0, session.mastery.get(body.topic_id, 0.0) + mastery_delta
+    )
+    if weak_concepts:
+        session.weak_areas = list(set(session.weak_areas + weak_concepts))
+
+    # When passed: mark topic completed and unlock the next one
+    if passed:
+        for i, t in enumerate(session.curriculum):
+            if t.id == body.topic_id:
+                t.status = "completed"
+                t.mastery = min(100.0, score)
+                if i + 1 < len(session.curriculum):
+                    if session.curriculum[i + 1].status == "locked":
+                        session.curriculum[i + 1].status = "active"
+                break
+
+    # Record quiz result in session history
+    from models.state import QuizResult
+    session.quiz_results.append(QuizResult(
+        topic_id=body.topic_id,
+        score=score,
+        total=total,
+        correct=correct_count,
+        weak_concepts=weak_concepts,
+    ))
     storage.update_session(session)
 
     return QuizSubmitResponse(
         score=score,
         total=total,
         correct=correct_count,
+        passed=passed,
         results=results,
         mastery_delta=mastery_delta,
-        weak_concepts=weak_areas,
+        weak_concepts=weak_concepts,
     )
+
+
+@router.post("/feedback", response_model=QuizFeedbackResponse)
+async def quiz_feedback(body: QuizFeedbackRequest):
+    session = storage.get_session(body.session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    topic_title = next(
+        (t.title for t in session.curriculum if t.id == body.topic_id),
+        body.topic_id,
+    )
+
+    from agents.examiner_agent import ExaminerAgent
+    try:
+        text = await ExaminerAgent().generate_feedback(
+            topic=topic_title,
+            level=session.level,
+            score=body.score,
+            correct=body.correct,
+            total=body.total,
+            wrong_questions=body.wrong_questions,
+        )
+        return QuizFeedbackResponse(feedback=text)
+    except Exception as exc:
+        logger.exception("Feedback generation failed: %s", exc)
+        # Non-critical — return a static fallback so the UI doesn't hang
+        pct = int(body.score)
+        if pct >= 90:
+            msg = "Excellent work! Your understanding of this topic is strong — you're ready to move on."
+        elif pct >= PASS_THRESHOLD:
+            msg = f"Good job passing with {pct}%. Review any questions you found tricky before continuing."
+        else:
+            msg = f"You scored {pct}%. Spend a few minutes reviewing the lesson, then try again."
+        return QuizFeedbackResponse(feedback=msg)

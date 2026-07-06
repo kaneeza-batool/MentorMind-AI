@@ -23,9 +23,11 @@ export const learning = {
 
 // ── Quiz ────────────────────────────────────────────────────────
 export const quiz = {
-  generate: (data)   => http.post('/quiz/generate', data),
-  submit:   (data)   => http.post('/quiz/submit', data),
-  explain:  (data)   => http.post('/quiz/explain', data),
+  // Longer timeout: AI generation can take 10-20s
+  generate: (data) => http.post('/quiz/generate', data, { timeout: 60_000 }),
+  submit:   (data) => http.post('/quiz/submit', data),
+  feedback: (data) => http.post('/quiz/feedback', data, { timeout: 45_000 }),
+  explain:  (data) => http.post('/quiz/explain', data),
 }
 
 // ── Reflection ──────────────────────────────────────────────────
