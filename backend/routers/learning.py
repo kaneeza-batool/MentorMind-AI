@@ -1,62 +1,69 @@
-import asyncio
+import logging
 from fastapi import APIRouter, HTTPException, Request
 from sse_starlette.sse import EventSourceResponse
 from models.schemas import LessonRequest
 from tools import storage
+from tools.gemini_client import generate
+from agents.mentor_agent import MentorAgent
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
-MOCK_LESSON_TEMPLATE = """\
-## {title}
 
-Welcome! In this lesson we'll explore **{title}** in depth.
+async def _lesson_stream(session_id: str, topic_id: str, request: Request):
+    """
+    Async generator that streams lesson chunks as SSE events.
 
-### What You'll Learn
-- The core principles behind {title}
-- How to apply these concepts in real scenarios
-- Common patterns and best practices
+    Event types:
+      chunk       — a piece of lesson markdown text
+      done        — stream finished ([DONE] payload)
+      stream_error — something went wrong (user-visible message payload)
 
----
+    Named 'stream_error' (not 'error') to avoid colliding with the browser's
+    reserved EventSource 'error' event.
+    """
+    session = storage.get_session(session_id)
+    if not session:
+        yield {"event": "stream_error", "data": "Session not found. Please restart."}
+        yield {"event": "done", "data": "[DONE]"}
+        return
 
-### Core Concepts
+    topic = next((t for t in session.curriculum if t.id == topic_id), None)
+    if not topic:
+        yield {"event": "stream_error", "data": "Topic not found in curriculum."}
+        yield {"event": "done", "data": "[DONE]"}
+        return
 
-**Foundation**
-Every journey begins with understanding the fundamentals. {title} is built on a set of elegant principles that, once grasped, make everything else click into place.
+    context = (
+        f"Learner goal: {session.goal}. "
+        f"Skill being studied: {session.skill}."
+    )
+    mentor = MentorAgent()
 
-**Application**
-Theory without practice is incomplete. Let's look at how {title} applies to real-world problems you'll encounter in your journey.
+    try:
+        async for chunk in mentor.teach(topic.title, session.level, context):
+            if await request.is_disconnected():
+                logger.info("Client disconnected during lesson stream for %s", topic_id)
+                return
+            yield {"event": "chunk", "data": chunk}
 
-**Best Practices**
-Experienced practitioners follow specific patterns that separate good work from great work. These are the habits worth building from day one:
+    except Exception as exc:
+        from openai import AuthenticationError, RateLimitError, APITimeoutError, APIConnectionError
 
-1. Start small, iterate fast.
-2. Read the error messages — they tell you exactly what's wrong.
-3. Write code you can explain to a colleague.
+        if isinstance(exc, AuthenticationError):
+            msg = "Service configuration error. Please contact support."
+        elif isinstance(exc, RateLimitError):
+            msg = "The AI service is busy right now. Please wait a moment and retry."
+        elif isinstance(exc, APITimeoutError):
+            msg = "The lesson is taking too long to generate. Please retry."
+        elif isinstance(exc, APIConnectionError):
+            msg = "Could not reach the AI service. Check your connection and retry."
+        else:
+            msg = "Lesson generation failed. Please retry."
 
----
+        logger.exception("Error during lesson stream for %s: %s", topic_id, exc)
+        yield {"event": "stream_error", "data": msg}
 
-### Summary
-
-You've covered the essentials of **{title}**. Here's what to remember:
-
-- Master the fundamentals before advancing.
-- Practice consistently to build durable skills.
-- Connect new knowledge to what you already know.
-
----
-
-*Great work! When you're ready, take the quiz to test your understanding.*
-"""
-
-
-async def _lesson_stream(title: str, request: Request):
-    text = MOCK_LESSON_TEMPLATE.format(title=title)
-    chunk_size = 6
-    for i in range(0, len(text), chunk_size):
-        if await request.is_disconnected():
-            break
-        yield {"event": "chunk", "data": text[i : i + chunk_size]}
-        await asyncio.sleep(0.025)
     yield {"event": "done", "data": "[DONE]"}
 
 
@@ -68,19 +75,47 @@ async def start_lesson(body: LessonRequest):
     topic = next((t for t in session.curriculum if t.id == body.topic_id), None)
     if not topic:
         raise HTTPException(status_code=404, detail="Topic not found")
-    return {"session_id": body.session_id, "topic_id": body.topic_id, "stream_url": f"/learn/stream?session_id={body.session_id}&topic_id={body.topic_id}"}
+    return {
+        "session_id": body.session_id,
+        "topic_id": body.topic_id,
+        "stream_url": f"/learn/stream?session_id={body.session_id}&topic_id={body.topic_id}",
+    }
 
 
 @router.get("/learn/stream")
 async def stream_lesson(session_id: str, topic_id: str, request: Request):
-    session = storage.get_session(session_id)
-    title = topic_id
-    if session:
-        topic = next((t for t in session.curriculum if t.id == topic_id), None)
-        if topic:
-            title = topic.title
+    return EventSourceResponse(_lesson_stream(session_id, topic_id, request))
 
-    return EventSourceResponse(_lesson_stream(title, request))
+
+@router.get("/learn/why")
+async def why_this_topic(session_id: str, topic_id: str):
+    """Returns a short Gemini-generated explanation connecting this topic to the learner's goal."""
+    session = storage.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    topic = next((t for t in session.curriculum if t.id == topic_id), None)
+    if not topic:
+        raise HTTPException(status_code=404, detail="Topic not found")
+
+    prompt = (
+        f"In 2–3 sentences, explain to a {session.level} learner "
+        f"exactly why studying '{topic.title}' is a crucial step toward their goal: "
+        f"'{session.goal}'. Be specific and motivating. "
+        "Do not open with 'Sure', 'Great', or similar filler words."
+    )
+    try:
+        result = await generate(prompt)
+        return {"why": result["text"].strip()}
+    except RuntimeError:
+        # API key missing — return a sensible fallback
+        return {
+            "why": (
+                f"Mastering '{topic.title}' gives you the foundational skills "
+                f"needed to achieve your goal: {session.goal}."
+            )
+        }
+    except Exception:
+        return {"why": f"This topic is an essential step in your {session.skill} journey."}
 
 
 @router.post("/next")
@@ -99,9 +134,9 @@ async def next_topic(session_id: str):
     next_idx = current_idx + 1
     if next_idx < len(session.curriculum):
         session.curriculum[next_idx].status = "active"
-        next_topic = session.curriculum[next_idx]
+        next_topic_obj = session.curriculum[next_idx]
         storage.update_session(session)
-        return {"next_topic": {"id": next_topic.id, "title": next_topic.title}}
+        return {"next_topic": {"id": next_topic_obj.id, "title": next_topic_obj.title}}
 
     storage.update_session(session)
     return {"message": "Curriculum complete", "next_topic": None}

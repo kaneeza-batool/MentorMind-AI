@@ -1,12 +1,14 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import rehypeHighlight from 'rehype-highlight'
+import 'highlight.js/styles/atom-one-dark.css'
 import {
   BookOpen, ChevronDown, ChevronRight,
   Clock, RotateCcw, AlertTriangle,
-  CheckCircle2, Lock, Play, Loader2,
+  CheckCircle2, Lock, Play, Loader2, Copy, Check,
 } from 'lucide-react'
 import useLearningStore from '@/store/learningStore'
 import { sessions as sessionsApi, learning as learningApi } from '@/services/api'
@@ -17,6 +19,65 @@ import useStream from '@/hooks/useStream'
 function readingMinutes(text) {
   const words = text.trim().split(/\s+/).filter(Boolean).length
   return Math.max(1, Math.round(words / 200))
+}
+
+// ── Code Block ───────────────────────────────────────────────────
+
+function CodeBlock({ children }) {
+  const [copied, setCopied] = useState(false)
+  const preRef = useRef(null)
+
+  const child = Array.isArray(children) ? children[0] : children
+  const className = child?.props?.className ?? ''
+  const lang = className.match(/language-(\w+)/)?.[1] ?? 'code'
+
+  const copy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(preRef.current?.textContent ?? '')
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch { /* clipboard denied */ }
+  }, [])
+
+  return (
+    <div className="not-prose my-4 rounded-xl border border-border overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-2 bg-bg-elevated border-b border-border">
+        <span className="text-2xs font-mono text-text-muted uppercase tracking-wider">{lang}</span>
+        <button
+          onClick={copy}
+          aria-label={copied ? 'Code copied' : 'Copy code'}
+          className="flex items-center gap-1 text-2xs text-text-muted hover:text-text-primary
+                     transition-colors duration-150 px-2 py-1 rounded-md hover:bg-bg-surface"
+        >
+          {copied
+            ? <><Check size={11} className="text-mentor" /><span>Copied</span></>
+            : <><Copy size={11} /><span>Copy</span></>
+          }
+        </button>
+      </div>
+      <pre ref={preRef} className="overflow-x-auto p-4 m-0 bg-bg-surface text-sm leading-relaxed">
+        {children}
+      </pre>
+    </div>
+  )
+}
+
+// Stable reference — no deps on component state, defined outside render
+const MD_COMPONENTS = {
+  pre: CodeBlock,
+  code({ children, className }) {
+    // Inline code (no language class) — styled but not wrapped in CodeBlock
+    if (!className) {
+      return (
+        <code className="font-mono text-primary-300 bg-bg-surface px-1.5 py-0.5 rounded-md
+                         text-[0.85em] before:content-none after:content-none">
+          {children}
+        </code>
+      )
+    }
+    // Block code — pass through with highlight.js classes intact
+    return <code className={className}>{children}</code>
+  },
 }
 
 // ── Mission Card ─────────────────────────────────────────────────
@@ -84,15 +145,16 @@ function CurriculumNav({ curriculum, currentIdx, onSelectTopic }) {
       </p>
       <div className="space-y-0.5">
         {curriculum.map((topic, i) => {
-          const isActive  = i === currentIdx
-          const isDone    = topic.status === 'completed'
-          const isLocked  = !isDone && !isActive
+          const isActive = i === currentIdx
+          const isDone   = topic.status === 'completed'
+          const isLocked = !isDone && !isActive
 
           return (
             <button
               key={topic.id}
               disabled={isLocked}
               onClick={() => onSelectTopic(i)}
+              aria-current={isActive ? 'step' : undefined}
               className={[
                 'w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left',
                 'transition-all duration-200',
@@ -123,7 +185,7 @@ function CurriculumNav({ curriculum, currentIdx, onSelectTopic }) {
 // ── Why Section ───────────────────────────────────────────────────
 
 function WhySection({ sessionId, topicId }) {
-  const whyExplanation   = useLearningStore((s) => s.whyExplanation)
+  const whyExplanation    = useLearningStore((s) => s.whyExplanation)
   const setWhyExplanation = useLearningStore((s) => s.setWhyExplanation)
 
   const [open, setOpen]       = useState(false)
@@ -153,6 +215,8 @@ function WhySection({ sessionId, topicId }) {
     <div className="rounded-xl border border-border bg-bg-card overflow-hidden">
       <button
         onClick={toggle}
+        aria-expanded={open}
+        aria-controls="why-section-body"
         className="w-full flex items-center justify-between px-4 py-3 text-left
                    hover:bg-bg-elevated transition-colors duration-150"
       >
@@ -168,6 +232,7 @@ function WhySection({ sessionId, topicId }) {
       <AnimatePresence initial={false}>
         {open && (
           <motion.div
+            id="why-section-body"
             key="why-body"
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
@@ -200,10 +265,15 @@ function ThinkingState() {
     'w-3/4', 'w-full', 'w-4/5', 'w-2/3',
   ]
   return (
-    <div className="animate-fade-in">
+    <div
+      role="status"
+      aria-live="polite"
+      aria-label="Generating your personalized lesson"
+      className="animate-fade-in"
+    >
       <div className="flex items-center gap-3 mb-6">
         <div className="w-8 h-8 rounded-lg bg-mentor/10 border border-mentor/20 flex items-center justify-center flex-shrink-0">
-          <Loader2 size={15} className="text-mentor animate-spin" />
+          <Loader2 size={15} className="text-mentor animate-spin" aria-hidden="true" />
         </div>
         <div>
           <p className="text-sm font-semibold text-text-primary leading-none mb-0.5">
@@ -212,7 +282,7 @@ function ThinkingState() {
           <p className="text-xs text-text-muted">Generating your personalized lesson</p>
         </div>
       </div>
-      <div className="space-y-3">
+      <div className="space-y-3" aria-hidden="true">
         {lines.map((w, i) => (
           <div
             key={i}
@@ -232,9 +302,10 @@ function ErrorBanner({ message, onRetry, canRetry }) {
     <motion.div
       initial={{ opacity: 0, y: -8 }}
       animate={{ opacity: 1, y: 0 }}
+      role="alert"
       className="flex items-start gap-3 px-4 py-3.5 rounded-xl bg-coach/8 border border-coach/25 mb-6"
     >
-      <AlertTriangle size={15} className="text-coach flex-shrink-0 mt-0.5" />
+      <AlertTriangle size={15} className="text-coach flex-shrink-0 mt-0.5" aria-hidden="true" />
       <div className="flex-1 min-w-0">
         <p className="text-sm font-semibold text-text-primary">Lesson generation failed</p>
         <p className="text-xs text-text-muted mt-0.5 leading-relaxed">{message}</p>
@@ -242,9 +313,10 @@ function ErrorBanner({ message, onRetry, canRetry }) {
       {canRetry && (
         <button
           onClick={onRetry}
+          aria-label="Retry lesson generation"
           className="btn-ghost btn-sm gap-1.5 flex-shrink-0 text-text-secondary hover:text-text-primary"
         >
-          <RotateCcw size={12} />
+          <RotateCcw size={12} aria-hidden="true" />
           Retry
         </button>
       )}
@@ -263,7 +335,7 @@ function CompleteBadge() {
       className="mt-12 flex items-center justify-center gap-3 py-6 rounded-2xl
                  bg-mentor/8 border border-mentor/20"
     >
-      <CheckCircle2 size={22} className="text-mentor" />
+      <CheckCircle2 size={22} className="text-mentor" aria-hidden="true" />
       <div>
         <p className="font-bold text-text-primary text-sm">Lesson complete!</p>
         <p className="text-xs text-text-muted mt-0.5">
@@ -290,17 +362,13 @@ export default function Learning() {
   const [initError,    setInitError]    = useState(null)
 
   const lessonRef      = useRef(null)
-  const bottomRef      = useRef(null)
   const userScrolledUp = useRef(false)
 
   const currentTopic = curriculum[currentTopicIndex] ?? null
 
   // ── Session initialization ──────────────────────────────────────
   useEffect(() => {
-    // Already have a session — nothing to do.
     if (sessionId) { setSessionReady(true); return }
-
-    // Onboarding data missing — send user back.
     if (!skill || !level || !goal) { navigate('/onboarding'); return }
 
     ;(async () => {
@@ -331,10 +399,12 @@ export default function Learning() {
     return () => el.removeEventListener('scroll', onScroll)
   }, [sessionReady])
 
-  // Auto-scroll to bottom while streaming if user hasn't scrolled up.
+  // Auto-scroll during streaming — direct DOM assignment avoids smooth-scroll
+  // animation fighting itself on rapid chunk updates.
   useEffect(() => {
     if (lessonLoading && !userScrolledUp.current) {
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+      const el = lessonRef.current
+      if (el) el.scrollTop = el.scrollHeight
     }
   }, [lessonContent, lessonLoading])
 
@@ -345,17 +415,20 @@ export default function Learning() {
     lessonRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
   }, [setCurrentTopic])
 
-  // Estimated reading time: prefer computed value once content exists.
-  const readMins = lessonContent
-    ? readingMinutes(lessonContent)
-    : (currentTopic?.estimated_minutes ?? 20)
+  // Estimated reading time — only recompute when content changes, not every render
+  const readMins = useMemo(
+    () => lessonContent
+      ? readingMinutes(lessonContent)
+      : (currentTopic?.estimated_minutes ?? 20),
+    [lessonContent, currentTopic?.estimated_minutes],
+  )
 
   // ── Error / loading states ──────────────────────────────────────
   if (initError) {
     return (
       <div className="h-full flex items-center justify-center">
         <div className="text-center max-w-xs">
-          <AlertTriangle size={30} className="text-coach mx-auto mb-3" />
+          <AlertTriangle size={30} className="text-coach mx-auto mb-3" aria-hidden="true" />
           <p className="font-semibold text-text-primary mb-1">Something went wrong</p>
           <p className="text-xs text-text-muted mb-5 leading-relaxed">{initError}</p>
           <button onClick={() => navigate('/onboarding')} className="btn-primary btn-sm">
@@ -369,7 +442,7 @@ export default function Learning() {
   if (!sessionReady) {
     return (
       <div className="h-full flex items-center justify-center gap-2.5">
-        <Loader2 size={20} className="text-mentor animate-spin" />
+        <Loader2 size={20} className="text-mentor animate-spin" aria-hidden="true" />
         <span className="text-sm text-text-muted">Preparing your session…</span>
       </div>
     )
@@ -379,8 +452,8 @@ export default function Learning() {
   return (
     <div className="h-full flex overflow-hidden">
 
-      {/* ── Left sidebar ──────────────────────────────────────────── */}
-      <aside className="w-72 flex-shrink-0 border-r border-border h-full overflow-y-auto no-scrollbar">
+      {/* ── Left sidebar — hidden on mobile, visible lg+ ──────────── */}
+      <aside className="hidden lg:flex lg:flex-col w-72 flex-shrink-0 border-r border-border h-full overflow-y-auto no-scrollbar">
         <div className="p-5 space-y-4">
           <MissionCard
             topic={currentTopic}
@@ -404,7 +477,7 @@ export default function Learning() {
 
       {/* ── Main lesson area ──────────────────────────────────────── */}
       <div ref={lessonRef} className="flex-1 h-full overflow-y-auto">
-        <div className="max-w-3xl mx-auto px-8 py-10">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10">
 
           <ProgressBar current={currentTopicIndex} total={curriculum.length} />
 
@@ -426,7 +499,11 @@ export default function Learning() {
                 transition={{ duration: 0.3 }}
                 className="prose-lesson"
               >
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  rehypePlugins={[rehypeHighlight]}
+                  components={MD_COMPONENTS}
+                >
                   {lessonContent}
                 </ReactMarkdown>
               </motion.article>
@@ -435,9 +512,6 @@ export default function Learning() {
 
           {/* Lesson complete badge */}
           {lessonComplete && <CompleteBadge />}
-
-          {/* Auto-scroll sentinel */}
-          <div ref={bottomRef} className="h-1" />
         </div>
       </div>
     </div>

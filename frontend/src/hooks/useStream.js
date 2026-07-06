@@ -12,17 +12,23 @@ const MAX_RETRIES = 2
  *   done         — stream finished
  *   stream_error — backend-reported error (avoids clashing with the browser's
  *                  reserved 'error' EventSource event)
+ *
+ * Retry counts are tracked per-topic so switching topics always grants
+ * a fresh set of MAX_RETRIES — no shared counter that bleeds across topics.
  */
 export default function useStream(sessionId, topicId, { enabled = false } = {}) {
-  const appendLesson       = useLearningStore((s) => s.appendLesson)
-  const setLoading         = useLearningStore((s) => s.setLessonLoading)
-  const setComplete        = useLearningStore((s) => s.setLessonComplete)
-  const setError           = useLearningStore((s) => s.setStreamError)
-  const clearLesson        = useLearningStore((s) => s.clearLesson)
-  const saveLessonHistory  = useLearningStore((s) => s.saveLessonHistory)
+  const appendLesson      = useLearningStore((s) => s.appendLesson)
+  const setLoading        = useLearningStore((s) => s.setLessonLoading)
+  const setComplete       = useLearningStore((s) => s.setLessonComplete)
+  const setError          = useLearningStore((s) => s.setStreamError)
+  const clearLesson       = useLearningStore((s) => s.clearLesson)
+  const saveLessonHistory = useLearningStore((s) => s.saveLessonHistory)
 
-  const sourceRef = useRef(null)
-  const [attempt, setAttempt] = useState(0)
+  const sourceRef   = useRef(null)
+  // Retry counts keyed by topicId — switching topics preserves independent counts
+  const attemptsRef = useRef({})
+  // Incrementing this re-triggers the effect for a retry without changing topicId
+  const [retryTick, setRetryTick] = useState(0)
 
   useEffect(() => {
     if (!enabled || !sessionId || !topicId) return
@@ -62,19 +68,21 @@ export default function useStream(sessionId, topicId, { enabled = false } = {}) 
     }
 
     return () => source.close()
-  }, [enabled, sessionId, topicId, attempt])
+  }, [enabled, sessionId, topicId, retryTick])
 
   const retry = useCallback(() => {
-    if (attempt < MAX_RETRIES) {
+    const attempts = attemptsRef.current[topicId] ?? 0
+    if (attempts < MAX_RETRIES) {
+      attemptsRef.current[topicId] = attempts + 1
       sourceRef.current?.close()
       setError(null)
-      setAttempt((c) => c + 1)
+      setRetryTick((n) => n + 1)
     }
-  }, [attempt, setError])
+  }, [topicId, setError])
 
   return {
     cancel:   () => sourceRef.current?.close(),
     retry,
-    canRetry: attempt < MAX_RETRIES,
+    canRetry: (attemptsRef.current[topicId] ?? 0) < MAX_RETRIES,
   }
 }

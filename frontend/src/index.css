@@ -138,6 +138,13 @@
   }
 }
 
+/* ─── Syntax highlighting ───────────────────────────────────── */
+/* Let CodeBlock's pre handle the background; hljs only provides color tokens */
+.hljs {
+  background: transparent !important;
+  padding: 0 !important;
+}
+
 /* ─── Utilities ─────────────────────────────────────────────── */
 @layer utilities {
 
