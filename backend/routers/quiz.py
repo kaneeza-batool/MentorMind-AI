@@ -5,12 +5,14 @@ from models.schemas import (
     QuizSubmitRequest, QuizSubmitResponse, QuizResultItem,
     QuizFeedbackRequest, QuizFeedbackResponse,
 )
+from agents.coach_agent import CoachAgent
 from tools import storage
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/quiz")
 
 PASS_THRESHOLD = 70.0
+_coach = CoachAgent()
 
 # session_id → topic_id → list of full question dicts (id, question, options, answer int, explanation)
 # Answers are never sent to the frontend — only used for server-side grading.
@@ -87,15 +89,22 @@ async def submit_quiz(body: QuizSubmitRequest):
 
     total = len(body.answers)
     score = round((correct_count / total) * 100, 1) if total > 0 else 0.0
-    passed = score >= PASS_THRESHOLD
-    mastery_delta = round(score * 0.4, 1)
 
-    # Update session mastery
-    session.mastery[body.topic_id] = min(
-        100.0, session.mastery.get(body.topic_id, 0.0) + mastery_delta
+    # Delegate mastery computation to CoachAgent
+    coach_result = _coach.analyze(
+        topic_id=body.topic_id,
+        score=score,
+        correct=correct_count,
+        total=total,
+        weak_question_ids=weak_concepts,
+        current_mastery=session.mastery.get(body.topic_id, 0.0),
+        current_weak=session.weak_areas,
     )
-    if weak_concepts:
-        session.weak_areas = list(set(session.weak_areas + weak_concepts))
+    passed        = coach_result["passed"]
+    mastery_delta = coach_result["mastery_delta"]
+
+    session.mastery[body.topic_id] = coach_result["new_mastery"]
+    session.weak_areas             = coach_result["weak_areas"]
 
     # When passed: mark topic completed and unlock the next one
     if passed:

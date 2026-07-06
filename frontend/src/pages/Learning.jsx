@@ -371,7 +371,15 @@ export default function Learning() {
   const lessonRef      = useRef(null)
   const userScrolledUp = useRef(false)
 
-  const currentTopic = curriculum[currentTopicIndex] ?? null
+  const currentTopic  = curriculum[currentTopicIndex] ?? null
+  const journeyDone   = curriculum.length > 0 && curriculum.every((t) => t.status === 'completed')
+
+  // ── Journey complete guard ──────────────────────────────────────
+  useEffect(() => {
+    if (sessionId && journeyDone) {
+      navigate('/journey-complete', { replace: true })
+    }
+  }, [sessionId, journeyDone, navigate])
 
   // ── Session initialization ──────────────────────────────────────
   useEffect(() => {
