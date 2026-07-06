@@ -43,7 +43,6 @@ async def reflect(body: ReflectRequest):
     # Include adaptation context if curriculum was recently adapted
     adapted_context = ""
     if session.curriculum_versions:
-        last = session.curriculum_versions[-1]
         adapted_context = (
             f"Note: The remaining curriculum was recently adapted because of weak areas in: "
             f"{', '.join(session.weak_areas[:3])}."
