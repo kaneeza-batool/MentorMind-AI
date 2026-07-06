@@ -1,20 +1,20 @@
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, Any
 
 
 # ── Session ──────────────────────────────────────────────────────
 class CreateSessionRequest(BaseModel):
-    skill:           str = Field(..., example="Python programming")
-    goal:            str = Field(..., example="Build production-ready web APIs")
-    level:           str = Field(..., example="intermediate")   # beginner | intermediate | advanced
-    timeline_weeks:  Optional[int] = Field(4, ge=1, le=52)
+    skill:          str = Field(..., example="Python programming")
+    goal:           str = Field(..., example="Build production-ready web APIs")
+    level:          str = Field(..., example="intermediate")
+    timeline_weeks: Optional[int] = Field(4, ge=1, le=52)
 
 
 class TopicSchema(BaseModel):
-    id:          str
-    title:       str
-    description: str
-    order:       int
+    id:                str
+    title:             str
+    description:       str
+    order:             int
     estimated_minutes: int = 20
 
 
@@ -36,10 +36,9 @@ class QuizGenerateRequest(BaseModel):
 
 
 class QuizQuestion(BaseModel):
-    """Frontend-facing question — no answer field exposed before submission."""
-    id:      str
+    id:       str
     question: str
-    options:  list[str]   # exactly 4 clean option strings (no "A." prefix)
+    options:  list[str]
 
 
 class QuizGenerateResponse(BaseModel):
@@ -48,7 +47,7 @@ class QuizGenerateResponse(BaseModel):
 
 class AnswerSubmission(BaseModel):
     question_id: str
-    answer:      int   # 0-based index into options list
+    answer:      int
 
 
 class QuizSubmitRequest(BaseModel):
@@ -66,13 +65,14 @@ class QuizResultItem(BaseModel):
 
 
 class QuizSubmitResponse(BaseModel):
-    score:         float   # percentage 0–100
-    total:         int
-    correct:       int
-    passed:        bool    # score >= 70
-    results:       list[QuizResultItem]
-    mastery_delta: float
-    weak_concepts: list[str]
+    score:              float
+    total:              int
+    correct:            int
+    passed:             bool
+    results:            list[QuizResultItem]
+    mastery_delta:      float
+    weak_concepts:      list[str]
+    curriculum_adapted: bool = False   # True when CoachAgent triggered adaptation
 
 
 class QuizFeedbackRequest(BaseModel):
@@ -81,14 +81,13 @@ class QuizFeedbackRequest(BaseModel):
     score:           float
     correct:         int
     total:           int
-    wrong_questions: list[str]   # question texts for wrong answers
+    wrong_questions: list[str]
 
 
 class QuizFeedbackResponse(BaseModel):
     feedback: str
 
 
-# Legacy schema kept for compatibility — not used by M6 router
 class QuestionSchema(BaseModel):
     id:      str
     text:    str
@@ -133,34 +132,60 @@ class TopicMasteryItem(BaseModel):
 
 
 class DashboardResponse(BaseModel):
-    session_id:          str
-    skill:               str
-    goal:                str
-    level:               str
-    overall_progress:    float
-    current_topic:       Optional[str]
-    topics_completed:    int
-    topics_remaining:    int
-    total_topics:        int
-    average_score:       float
-    overall_mastery:     float
-    completion_estimate: str
-    streak:              int
-    learning_velocity:   float   # topics completed per day
-    curriculum_complete: bool
-    mastery_by_topic:    list[TopicMasteryItem]
+    session_id:               str
+    skill:                    str
+    goal:                     str
+    level:                    str
+    overall_progress:         float
+    current_topic:            Optional[str]
+    topics_completed:         int
+    topics_remaining:         int
+    total_topics:             int
+    average_score:            float
+    overall_mastery:          float
+    completion_estimate:      str
+    streak:                   int
+    learning_velocity:        float
+    curriculum_complete:      bool
+    mastery_by_topic:         list[TopicMasteryItem]
+    total_study_minutes:      int   = 0
+    curriculum_adaptations:   int   = 0
+
+
+# ── Analytics ─────────────────────────────────────────────────────
+class TopicScorePoint(BaseModel):
+    topic_id: str
+    title:    str
+    score:    float
+    taken_at: str
+
+
+class AnalyticsResponse(BaseModel):
+    session_id:               str
+    score_trend:              list[TopicScorePoint]
+    mastery_trend:            list[dict]   # [{taken_at, overall_mastery}]
+    strongest_topic:          Optional[dict]
+    weakest_topic:            Optional[dict]
+    study_time_by_topic:      dict         # {topic_id: {title, minutes}}
+    total_study_minutes:      float
+    quizzes_taken:            int
+    topics_completed:         int
+    topics_remaining:         int
+    completion_forecast_days: Optional[int]
+    curriculum_adaptations:   int
+    weak_areas:               list[str]
 
 
 # ── Resources ────────────────────────────────────────────────────
 class ResourceSchema(BaseModel):
     title:      str
     url:        str
-    type:       str            # article | video | course | docs | repo
+    type:       str
     source:     str
     why:        str
     duration:   Optional[str] = None
-    difficulty: Optional[str] = None  # beginner | intermediate | advanced
-    category:   Optional[str] = None  # video | article | practice | project
+    difficulty: Optional[str] = None
+    category:   Optional[str] = None
 
 
 class ResourcesResponse(BaseModel):
@@ -170,8 +195,37 @@ class ResourcesResponse(BaseModel):
 
 # ── Progress ─────────────────────────────────────────────────────
 class ProgressResponse(BaseModel):
-    session_id:        str
-    mastery:           dict    # { topic_id: score 0-100 }
-    completed_topics:  list[str]
-    weak_areas:        list[str]
-    overall_score:     float
+    session_id:       str
+    mastery:          dict
+    completed_topics: list[str]
+    weak_areas:       list[str]
+    overall_score:    float
+
+
+# ── MCP ──────────────────────────────────────────────────────────
+class MCPRequest(BaseModel):
+    jsonrpc: str = "2.0"
+    id:      Any = None
+    method:  str
+    params:  dict = Field(default_factory=dict)
+
+
+class MCPContent(BaseModel):
+    type: str = "text"
+    text: str
+
+
+class MCPToolResult(BaseModel):
+    content: list[MCPContent]
+
+
+class MCPError(BaseModel):
+    code:    int
+    message: str
+
+
+class MCPResponse(BaseModel):
+    jsonrpc: str = "2.0"
+    id:      Any = None
+    result:  Optional[Any] = None
+    error:   Optional[MCPError] = None

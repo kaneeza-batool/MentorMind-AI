@@ -11,7 +11,7 @@ _agent = ReflectionAgent()
 
 @router.post("/reflect", response_model=ReflectResponse)
 async def reflect(body: ReflectRequest):
-    session = storage.get_session(body.session_id)
+    session = await storage.get_session(body.session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
@@ -40,6 +40,15 @@ async def reflect(body: ReflectRequest):
     total    = int(quiz.get("total",     5))
     weak     = list(quiz.get("weak_concepts", []))
 
+    # Include adaptation context if curriculum was recently adapted
+    adapted_context = ""
+    if session.curriculum_versions:
+        last = session.curriculum_versions[-1]
+        adapted_context = (
+            f"Note: The remaining curriculum was recently adapted because of weak areas in: "
+            f"{', '.join(session.weak_areas[:3])}."
+        )
+
     reflection = await _agent.reflect(
         goal=session.goal,
         level=session.level,
@@ -49,11 +58,12 @@ async def reflect(body: ReflectRequest):
         total=total,
         weak_concepts=weak,
         previous_topics=previous,
+        adapted_context=adapted_context,
     )
 
     # Cache in session so repeat visits return the same reflection
     if topic_id:
         session.reflections[topic_id] = reflection
-        storage.update_session(session)
+        await storage.update_session(session)
 
     return ReflectResponse(**reflection)

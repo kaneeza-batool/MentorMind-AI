@@ -29,9 +29,11 @@ jobs:
       - name: Lint (ruff)
         run: ruff check . --select E,W,F --ignore E501
 
-      - name: Import check — all agents
+      - name: Import check — all agents + storage layer
         env:
           GROQ_API_KEY: dummy-key-for-ci
+          DB_PATH: /tmp/mentormind-ci.db
+          VALIDATE_RESOURCE_URLS: "false"
         run: |
           python -c "
           from agents.strategist_agent import StrategistAgent
@@ -42,17 +44,47 @@ jobs:
           from agents.reflection_agent import ReflectionAgent
           from models.schemas import (
             DashboardResponse, ResourceSchema, ReflectResponse,
+            AnalyticsResponse, MCPRequest, MCPResponse,
           )
           from models.state import LearningSession
+          from tools.storage import create_session, get_session, update_session
+          from config import settings
           print('All imports OK')
+
+          # Agent status checks
           s = StrategistAgent(); c = CoachAgent(); r = ResourceAgent()
           print('strategist:', s.config['status'])
-          print('coach:', c.config['status'])
-          print('resource:', r.config['status'])
+          print('coach:',      c.config['status'])
+          print('resource:',   r.config['status'])
+
+          # CoachAgent logic
           result = c.analyze('t1', 85.0, 4, 5, [], 0.0, [])
-          assert result['passed'], 'Coach: 85% should pass'
-          assert result['new_mastery'] == 34.0, f\"Mastery mismatch: {result['new_mastery']}\"
+          assert result['passed'],             'Coach: 85% should pass'
+          assert result['new_mastery'] == 34.0, f'Mastery mismatch: {result[\"new_mastery\"]}'
+          assert not result['should_adapt'],   'Coach: 85% should NOT adapt'
           print('CoachAgent logic OK')
+
+          # Low-score adaptation signal
+          low = c.analyze('t2', 40.0, 2, 5, ['q1'], 10.0, [])
+          assert not low['passed'],     'Coach: 40% should not pass'
+          assert low['should_adapt'],   'Coach: 40% + low mastery should adapt'
+          print('CoachAgent adaptation signal OK')
+
+          # URL validator import
+          from routers.resources import _is_valid_url
+          assert _is_valid_url('https://github.com/topics/python')
+          assert _is_valid_url('https://developer.mozilla.org/en-US/docs/Web/JavaScript')
+          assert not _is_valid_url('http://example.com')
+          assert not _is_valid_url('javascript:void(0)')
+          print('URL validator OK')
+
+          # Session model fields
+          sess = LearningSession(id='ci-test', skill='test', goal='test', level='beginner')
+          assert hasattr(sess, 'curriculum_versions'), 'Missing curriculum_versions field'
+          assert hasattr(sess, 'study_time'),          'Missing study_time field'
+          print('Session model OK')
+
+          print('All checks passed.')
           "
 
   # ── Frontend ─────────────────────────────────────────────────────────

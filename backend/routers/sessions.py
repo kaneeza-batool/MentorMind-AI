@@ -61,14 +61,14 @@ async def create_session(body: CreateSessionRequest):
         )
         for t in topics_schema
     ]
-    storage.update_session(session)
+    await storage.update_session(session)
 
     return SessionResponse(session_id=session.id, curriculum=topics_schema)
 
 
 @router.get("/{session_id}")
 async def get_session(session_id: str):
-    session = storage.get_session(session_id)
+    session = await storage.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     return {
@@ -90,4 +90,5 @@ async def get_session(session_id: str):
         ],
         "mastery":    session.mastery,
         "weak_areas": session.weak_areas,
+        "curriculum_versions": len(session.curriculum_versions),
     }

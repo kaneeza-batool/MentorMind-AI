@@ -15,14 +15,11 @@ async def _lesson_stream(session_id: str, topic_id: str, request: Request):
     Async generator that streams lesson chunks as SSE events.
 
     Event types:
-      chunk       — a piece of lesson markdown text
-      done        — stream finished ([DONE] payload)
+      chunk        — a piece of lesson markdown text
+      done         — stream finished ([DONE] payload)
       stream_error — something went wrong (user-visible message payload)
-
-    Named 'stream_error' (not 'error') to avoid colliding with the browser's
-    reserved EventSource 'error' event.
     """
-    session = storage.get_session(session_id)
+    session = await storage.get_session(session_id)
     if not session:
         yield {"event": "stream_error", "data": "Session not found. Please restart."}
         yield {"event": "done", "data": "[DONE]"}
@@ -69,7 +66,7 @@ async def _lesson_stream(session_id: str, topic_id: str, request: Request):
 
 @router.post("/learn", status_code=200)
 async def start_lesson(body: LessonRequest):
-    session = storage.get_session(body.session_id)
+    session = await storage.get_session(body.session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     topic = next((t for t in session.curriculum if t.id == body.topic_id), None)
@@ -87,10 +84,26 @@ async def stream_lesson(session_id: str, topic_id: str, request: Request):
     return EventSourceResponse(_lesson_stream(session_id, topic_id, request))
 
 
+@router.post("/learn/complete")
+async def complete_lesson(session_id: str, topic_id: str, study_minutes: int = 0):
+    """Record study time for a completed lesson. Called by the frontend on stream done."""
+    session = await storage.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    from datetime import datetime, timezone
+    session.study_time[topic_id] = study_minutes * 60
+    session.lesson_history.setdefault(topic_id, {})
+    session.lesson_history[topic_id]["completed_at"]   = datetime.now(timezone.utc).isoformat()
+    session.lesson_history[topic_id]["study_minutes"]  = study_minutes
+    await storage.update_session(session)
+    return {"ok": True}
+
+
 @router.get("/learn/why")
 async def why_this_topic(session_id: str, topic_id: str):
-    """Returns a short Gemini-generated explanation connecting this topic to the learner's goal."""
-    session = storage.get_session(session_id)
+    """Returns a short AI-generated explanation connecting this topic to the learner's goal."""
+    session = await storage.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     topic = next((t for t in session.curriculum if t.id == topic_id), None)
@@ -107,7 +120,6 @@ async def why_this_topic(session_id: str, topic_id: str):
         result = await generate(prompt)
         return {"why": result["text"].strip()}
     except RuntimeError:
-        # API key missing — return a sensible fallback
         return {
             "why": (
                 f"Mastering '{topic.title}' gives you the foundational skills "
@@ -120,7 +132,7 @@ async def why_this_topic(session_id: str, topic_id: str):
 
 @router.post("/next")
 async def next_topic(session_id: str):
-    session = storage.get_session(session_id)
+    session = await storage.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
@@ -135,8 +147,8 @@ async def next_topic(session_id: str):
     if next_idx < len(session.curriculum):
         session.curriculum[next_idx].status = "active"
         next_topic_obj = session.curriculum[next_idx]
-        storage.update_session(session)
+        await storage.update_session(session)
         return {"next_topic": {"id": next_topic_obj.id, "title": next_topic_obj.title}}
 
-    storage.update_session(session)
+    await storage.update_session(session)
     return {"message": "Curriculum complete", "next_topic": None}

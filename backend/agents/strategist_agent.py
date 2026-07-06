@@ -1,11 +1,10 @@
 """
-Strategist Agent — generates a personalised learning curriculum via Groq AI.
+Strategist Agent — generates and adapts a personalised learning curriculum.
 
-Replaces the hardcoded 5-topic mock in sessions.py with an AI-planned
-path tailored to the learner's skill, goal, level, and available timeline.
-
-Caches per (skill, level) pair to avoid redundant generation on retries.
-Falls back to a deterministic curriculum on any AI failure.
+Two public methods:
+  plan()           — initial curriculum generation for a new session
+  adapt_remaining() — regenerates only the locked (not-yet-started) topics
+                     when CoachAgent signals the learner needs adaptation
 """
 import json
 import logging
@@ -19,8 +18,8 @@ _CACHE: dict[str, list[dict]] = {}
 
 def _fallback_curriculum(skill: str, level: str, timeline_weeks: int) -> list[dict]:
     """Deterministic 5-topic curriculum when AI is unavailable."""
-    s = skill.strip().title() if skill.strip() else "the Subject"
-    pacing = max(20, min(60, timeline_weeks * 4))  # minutes per topic
+    s     = skill.strip().title() if skill.strip() else "the Subject"
+    pacing = max(20, min(60, timeline_weeks * 4))
 
     return [
         {
@@ -66,7 +65,7 @@ class StrategistAgent:
     DESCRIPTION = (
         "Creates a personalised, progressive learning curriculum tailored to "
         "the learner's skill, goal, experience level, and available timeline. "
-        "Adapts topic depth and pacing based on Coach mastery signals."
+        "Adapts remaining topics when CoachAgent signals low mastery."
     )
 
     @property
@@ -89,11 +88,8 @@ class StrategistAgent:
         """
         Generate a personalised curriculum for the learner.
 
-        Returns a list of topic dicts, each with:
-            id, title, description, order, estimated_minutes
-
-        Results are cached per (skill, level) — repeated calls are instant.
-        Falls back to a deterministic curriculum on AI failure.
+        Returns a list of topic dicts: id, title, description, order, estimated_minutes.
+        Cached per (skill, level). Falls back deterministically on AI failure.
         """
         cache_key = f"{skill.lower().strip()}::{level}"
 
@@ -101,12 +97,88 @@ class StrategistAgent:
             logger.info("StrategistAgent cache hit for '%s' (%s)", skill, level)
             return _CACHE[cache_key]
 
-        logger.info("StrategistAgent planning curriculum for '%s' (level=%s, weeks=%d)",
-                    skill, level, timeline_weeks)
+        logger.info(
+            "StrategistAgent planning curriculum for '%s' (level=%s, weeks=%d)",
+            skill, level, timeline_weeks,
+        )
 
         topics = await self._generate(skill, goal, level, timeline_weeks, coach_signals or {})
         _CACHE[cache_key] = topics
         return topics
+
+    async def adapt_remaining(
+        self,
+        session,          # LearningSession — avoids circular import
+        weak_areas: list[str],
+    ) -> bool:
+        """
+        Regenerate only the locked (not-yet-started) topics using weak-area signals.
+
+        Completed and active topics are never modified. Topic IDs are preserved so
+        frontend state stays consistent. Returns True if adaptation was applied.
+
+        The curriculum_versions list on the session is updated with a snapshot
+        before the change; the caller is responsible for persisting the session.
+        """
+        from datetime import datetime, timezone
+        from models.state import Topic
+
+        locked = [t for t in session.curriculum if t.status == "locked"]
+        if not locked:
+            logger.info("StrategistAgent.adapt_remaining: no locked topics — skipping")
+            return False
+
+        n_remaining = len(locked)
+        coach_signals = {"weak_areas": weak_areas[:5]}
+
+        logger.info(
+            "StrategistAgent adapting %d remaining topics for '%s' (weak: %s)",
+            n_remaining, session.skill, weak_areas[:3],
+        )
+
+        try:
+            new_topics = await self._generate(
+                skill=session.skill,
+                goal=session.goal,
+                level=session.level,
+                timeline_weeks=max(2, n_remaining),
+                coach_signals=coach_signals,
+            )
+        except Exception as exc:
+            logger.warning("StrategistAgent adaptation generation failed: %s", exc)
+            return False
+
+        # Trim or extend to exactly n_remaining topics
+        new_topics = new_topics[:n_remaining]
+        if not new_topics:
+            return False
+
+        # Snapshot curriculum state before modifying
+        snapshot = [
+            {"id": t.id, "title": t.title, "status": t.status}
+            for t in session.curriculum
+        ]
+        version_count = len(session.curriculum_versions) + 1
+        session.curriculum_versions.append({
+            "version":   version_count,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "reason":    f"low_mastery — weak areas: {', '.join(weak_areas[:3])}",
+            "snapshot":  snapshot,
+        })
+
+        # Patch locked topics in-place (IDs preserved)
+        for i, raw in enumerate(new_topics):
+            if i >= len(locked):
+                break
+            locked[i].title             = raw["title"]
+            locked[i].description       = raw["description"]
+            locked[i].estimated_minutes = raw.get("estimated_minutes", 25)
+
+        logger.info(
+            "StrategistAgent adaptation v%d applied — %d topics updated",
+            version_count, len(new_topics),
+        )
+        return True
 
     async def _generate(
         self,
@@ -118,8 +190,7 @@ class StrategistAgent:
     ) -> list[dict]:
         from tools.gemini_client import generate
 
-        # Compute ideal topic count: more weeks = more depth = more topics
-        n_topics = 4 if timeline_weeks <= 2 else 5 if timeline_weeks <= 6 else 6
+        n_topics       = 4 if timeline_weeks <= 2 else 5 if timeline_weeks <= 6 else 6
         mins_per_topic = max(20, min(60, (timeline_weeks * 60) // (n_topics * 3)))
 
         level_guidance = {

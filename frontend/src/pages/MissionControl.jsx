@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   BarChart2, CheckCircle2, Target, TrendingUp, Zap,
-  BookOpen, Brain, Sparkles, ArrowRight, Loader2, Activity, Layers,
+  BookOpen, Brain, Sparkles, ArrowRight, Loader2, Activity,
+  Layers, Clock, Award, GitBranch, TriangleAlert,
 } from 'lucide-react'
 import useLearningStore from '@/store/learningStore'
 import { progress as progressApi } from '@/services/api'
@@ -11,14 +12,17 @@ import MasteryRing from '@/components/progress/MasteryRing'
 import ScoreTimeline from '@/components/progress/ScoreTimeline'
 import AdaptiveBadge from '@/components/progress/AdaptiveBadge'
 
-// ── Stat Card ─────────────────────────────────────────────────────
+// ── Accent config ─────────────────────────────────────────────────
 
 const ACCENT = {
   primary:    { bg: 'bg-primary/10',    border: 'border-primary/20',    text: 'text-primary-300' },
   mentor:     { bg: 'bg-mentor/10',     border: 'border-mentor/20',     text: 'text-mentor' },
   examiner:   { bg: 'bg-examiner/10',   border: 'border-examiner/20',   text: 'text-examiner' },
   reflection: { bg: 'bg-reflection/10', border: 'border-reflection/20', text: 'text-reflection' },
+  coach:      { bg: 'bg-coach/10',      border: 'border-coach/20',      text: 'text-coach' },
 }
+
+// ── Stat Card ─────────────────────────────────────────────────────
 
 function StatCard({ icon: Icon, label, value, accent = 'primary', delay = 0 }) {
   const a = ACCENT[accent] ?? ACCENT.primary
@@ -83,6 +87,158 @@ function TopicMasteryCard({ item, delay = 0 }) {
           <span className="text-2xs text-text-muted">—</span>
         )}
       </div>
+    </motion.div>
+  )
+}
+
+// ── Score Trend Chart (simple bar chart) ──────────────────────────
+
+function ScoreTrendChart({ scoreTrend }) {
+  if (!scoreTrend?.length) return (
+    <p className="text-xs text-text-muted text-center py-4">
+      Complete a quiz to see your score trend.
+    </p>
+  )
+
+  const max = 100
+  return (
+    <div className="space-y-2">
+      {scoreTrend.map((point, i) => (
+        <div key={i} className="flex items-center gap-2">
+          <span className="text-2xs text-text-muted w-4 tabular-nums flex-shrink-0">
+            {i + 1}
+          </span>
+          <div className="flex-1 h-5 bg-bg-elevated rounded-md overflow-hidden relative">
+            <motion.div
+              className={`h-full rounded-md ${
+                point.score >= 80 ? 'bg-mentor/70' :
+                point.score >= 70 ? 'bg-primary-400/70' : 'bg-coach/70'
+              }`}
+              initial={{ width: 0 }}
+              animate={{ width: `${(point.score / max) * 100}%` }}
+              transition={{ duration: 0.6, delay: i * 0.08, ease: [0.4, 0, 0.2, 1] }}
+            />
+            <span className="absolute inset-0 flex items-center pl-2 text-2xs font-semibold text-text-primary">
+              {point.score.toFixed(0)}%
+            </span>
+          </div>
+          <span className="text-2xs text-text-muted truncate max-w-[80px]" title={point.title}>
+            {point.title}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ── Analytics Panel ───────────────────────────────────────────────
+
+function AnalyticsPanel({ analytics }) {
+  if (!analytics) return null
+
+  const { strongest_topic, weakest_topic, total_study_minutes,
+          completion_forecast_days, curriculum_adaptations, weak_areas } = analytics
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, delay: 0.15 }}
+      className="card p-4 space-y-4"
+    >
+      <div className="flex items-center gap-2">
+        <Activity size={13} className="text-primary-300" aria-hidden="true" />
+        <span className="text-xs font-bold text-text-secondary uppercase tracking-widest">
+          Learning Analytics
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        {/* Study time */}
+        <div className="rounded-lg bg-bg-elevated/60 border border-border px-3 py-2.5">
+          <div className="flex items-center gap-1.5 mb-1">
+            <Clock size={11} className="text-mentor" aria-hidden="true" />
+            <span className="text-2xs font-semibold text-text-muted uppercase tracking-wide">Study Time</span>
+          </div>
+          <p className="text-sm font-bold text-text-primary tabular-nums">
+            {total_study_minutes > 0 ? `${total_study_minutes.toFixed(0)} min` : '—'}
+          </p>
+        </div>
+
+        {/* Forecast */}
+        <div className="rounded-lg bg-bg-elevated/60 border border-border px-3 py-2.5">
+          <div className="flex items-center gap-1.5 mb-1">
+            <Target size={11} className="text-reflection" aria-hidden="true" />
+            <span className="text-2xs font-semibold text-text-muted uppercase tracking-wide">Forecast</span>
+          </div>
+          <p className="text-sm font-bold text-text-primary tabular-nums">
+            {completion_forecast_days != null ? `~${completion_forecast_days}d` : '—'}
+          </p>
+        </div>
+      </div>
+
+      {/* Strongest / Weakest */}
+      {(strongest_topic || weakest_topic) && (
+        <div className="grid grid-cols-2 gap-3">
+          {strongest_topic && (
+            <div className="rounded-lg bg-mentor/5 border border-mentor/15 px-3 py-2.5">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Award size={11} className="text-mentor" aria-hidden="true" />
+                <span className="text-2xs font-semibold text-mentor uppercase tracking-wide">Strongest</span>
+              </div>
+              <p className="text-xs text-text-secondary font-medium leading-tight truncate">
+                {strongest_topic.title}
+              </p>
+              <p className="text-xs font-bold text-mentor tabular-nums mt-0.5">
+                {strongest_topic.mastery.toFixed(0)}%
+              </p>
+            </div>
+          )}
+          {weakest_topic && strongest_topic?.topic_id !== weakest_topic?.topic_id && (
+            <div className="rounded-lg bg-coach/5 border border-coach/15 px-3 py-2.5">
+              <div className="flex items-center gap-1.5 mb-1">
+                <TriangleAlert size={11} className="text-coach" aria-hidden="true" />
+                <span className="text-2xs font-semibold text-coach uppercase tracking-wide">Weakest</span>
+              </div>
+              <p className="text-xs text-text-secondary font-medium leading-tight truncate">
+                {weakest_topic.title}
+              </p>
+              <p className="text-xs font-bold text-coach tabular-nums mt-0.5">
+                {weakest_topic.mastery.toFixed(0)}%
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Curriculum adaptations */}
+      {curriculum_adaptations > 0 && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-reflection/5 border border-reflection/15">
+          <GitBranch size={12} className="text-reflection flex-shrink-0" aria-hidden="true" />
+          <p className="text-xs text-text-secondary">
+            Curriculum adapted <span className="font-semibold text-reflection">{curriculum_adaptations}×</span> based on your performance
+          </p>
+        </div>
+      )}
+
+      {/* Weak areas */}
+      {weak_areas?.length > 0 && (
+        <div>
+          <p className="text-2xs font-semibold text-text-muted uppercase tracking-widest mb-1.5">
+            Focus Areas
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {weak_areas.slice(0, 5).map((area, i) => (
+              <span
+                key={i}
+                className="text-2xs px-2 py-0.5 rounded-md bg-coach/8 border border-coach/20 text-coach"
+              >
+                {area}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
     </motion.div>
   )
 }
@@ -185,16 +341,22 @@ export default function MissionControl() {
   const navigate = useNavigate()
   const { sessionId, curriculum, mastery, weakAreas } = useLearningStore()
 
-  const [dashboard, setDashboard] = useState(null)
-  const [loading,   setLoading]   = useState(true)
-  const [error,     setError]     = useState(null)
+  const [dashboard,  setDashboard]  = useState(null)
+  const [analytics,  setAnalytics]  = useState(null)
+  const [loading,    setLoading]    = useState(true)
+  const [error,      setError]      = useState(null)
 
   useEffect(() => {
     if (!sessionId) { navigate('/learn', { replace: true }); return }
 
-    progressApi
-      .dashboard(sessionId)
-      .then(({ data }) => setDashboard(data))
+    Promise.all([
+      progressApi.dashboard(sessionId),
+      progressApi.analytics(sessionId),
+    ])
+      .then(([{ data: dash }, { data: anal }]) => {
+        setDashboard(dash)
+        setAnalytics(anal)
+      })
       .catch(() => setError('Dashboard temporarily unavailable.'))
       .finally(() => setLoading(false))
   }, [sessionId]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -259,69 +421,40 @@ export default function MissionControl() {
           />
         )}
 
-        {/* Stats grid — 4 primary + 3 enhanced */}
+        {/* Stats grid — row 1: primary 4 */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3" aria-label="Learning statistics">
-          <StatCard
-            icon={TrendingUp}
-            label="Progress"
-            value={`${dashboard.overall_progress}%`}
-            accent="primary"
-            delay={0.05}
-          />
-          <StatCard
-            icon={CheckCircle2}
-            label="Topics done"
-            value={`${dashboard.topics_completed}/${dashboard.total_topics}`}
-            accent="mentor"
-            delay={0.10}
-          />
-          <StatCard
-            icon={Brain}
-            label="Avg. score"
-            value={dashboard.average_score > 0 ? `${dashboard.average_score.toFixed(0)}%` : '—'}
-            accent="examiner"
-            delay={0.15}
-          />
-          <StatCard
-            icon={Zap}
-            label="Streak"
-            value={dashboard.streak || '—'}
-            accent="reflection"
-            delay={0.20}
-          />
+          <StatCard icon={TrendingUp}   label="Progress"    value={`${dashboard.overall_progress}%`}                               accent="primary"    delay={0.05} />
+          <StatCard icon={CheckCircle2} label="Topics done" value={`${dashboard.topics_completed}/${dashboard.total_topics}`}       accent="mentor"     delay={0.10} />
+          <StatCard icon={Brain}        label="Avg. score"  value={dashboard.average_score > 0 ? `${dashboard.average_score.toFixed(0)}%` : '—'} accent="examiner"   delay={0.15} />
+          <StatCard icon={Zap}          label="Streak"      value={dashboard.streak || '—'}                                         accent="reflection" delay={0.20} />
         </div>
 
-        <div className="grid grid-cols-3 gap-3 mb-6" aria-label="Enhanced learning metrics">
-          <StatCard
-            icon={Target}
-            label="Mastery"
-            value={
-              dashboard.overall_mastery > 0
-                ? `${dashboard.overall_mastery.toFixed(0)}%`
-                : '—'
-            }
-            accent="examiner"
-            delay={0.25}
-          />
-          <StatCard
-            icon={Layers}
-            label="Remaining"
-            value={dashboard.topics_remaining ?? (dashboard.total_topics - dashboard.topics_completed)}
-            accent="primary"
-            delay={0.30}
-          />
-          <StatCard
-            icon={Activity}
-            label="Velocity"
-            value={
-              dashboard.learning_velocity > 0
-                ? `${dashboard.learning_velocity.toFixed(1)}/day`
-                : '—'
-            }
-            accent="mentor"
-            delay={0.35}
-          />
+        {/* Stats grid — row 2: enhanced metrics */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6" aria-label="Enhanced metrics">
+          <StatCard icon={Target}      label="Mastery"    value={dashboard.overall_mastery > 0 ? `${dashboard.overall_mastery.toFixed(0)}%` : '—'} accent="examiner"   delay={0.25} />
+          <StatCard icon={Layers}      label="Remaining"  value={dashboard.topics_remaining}                                                      accent="primary"    delay={0.30} />
+          <StatCard icon={Activity}    label="Velocity"   value={dashboard.learning_velocity > 0 ? `${dashboard.learning_velocity.toFixed(1)}/day` : '—'} accent="mentor" delay={0.35} />
+          <StatCard icon={Clock}       label="Study time" value={dashboard.total_study_minutes > 0 ? `${dashboard.total_study_minutes}m` : '—'}    accent="coach"      delay={0.40} />
         </div>
+
+        {/* Adaptations badge (if any) */}
+        {dashboard.curriculum_adaptations > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-reflection/5 border border-reflection/15 mb-6"
+          >
+            <GitBranch size={13} className="text-reflection flex-shrink-0" aria-hidden="true" />
+            <p className="text-xs text-text-secondary">
+              Your curriculum has been{' '}
+              <span className="font-semibold text-reflection">
+                adapted {dashboard.curriculum_adaptations} time{dashboard.curriculum_adaptations !== 1 ? 's' : ''}
+              </span>{' '}
+              by your AI mentor based on quiz performance.
+            </p>
+          </motion.div>
+        )}
 
         {/* Overall progress bar */}
         <div className="card p-4 mb-6">
@@ -352,7 +485,7 @@ export default function MissionControl() {
           )}
         </div>
 
-        {/* Mastery + Timeline */}
+        {/* Mastery, Timeline, Analytics — responsive grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
           {/* Mastery by topic */}
           <div className="card p-4">
@@ -369,16 +502,36 @@ export default function MissionControl() {
             </div>
           </div>
 
-          {/* Learning timeline */}
-          <div className="card p-4">
-            <div className="flex items-center gap-2 mb-4">
-              <BookOpen size={13} className="text-text-muted" aria-hidden="true" />
-              <span className="text-xs font-bold text-text-secondary uppercase tracking-widest">
-                Learning Timeline
-              </span>
+          {/* Right column: timeline + analytics */}
+          <div className="space-y-5">
+            <div className="card p-4">
+              <div className="flex items-center gap-2 mb-4">
+                <BookOpen size={13} className="text-text-muted" aria-hidden="true" />
+                <span className="text-xs font-bold text-text-secondary uppercase tracking-widest">
+                  Learning Timeline
+                </span>
+              </div>
+              <ScoreTimeline curriculum={curriculum} mastery={mastery} />
             </div>
-            <ScoreTimeline curriculum={curriculum} mastery={mastery} />
+
+            {/* Score trend */}
+            {analytics?.score_trend?.length > 0 && (
+              <div className="card p-4">
+                <div className="flex items-center gap-2 mb-4">
+                  <TrendingUp size={13} className="text-text-muted" aria-hidden="true" />
+                  <span className="text-xs font-bold text-text-secondary uppercase tracking-widest">
+                    Score Trend
+                  </span>
+                </div>
+                <ScoreTrendChart scoreTrend={analytics.score_trend} />
+              </div>
+            )}
           </div>
+        </div>
+
+        {/* Analytics deep-dive */}
+        <div className="mb-6">
+          <AnalyticsPanel analytics={analytics} />
         </div>
 
         {/* AI Insights */}
@@ -386,7 +539,7 @@ export default function MissionControl() {
           <AiInsights dashboard={dashboard} />
         </div>
 
-        {/* CTA — only when not complete */}
+        {/* CTA */}
         {!dashboard.curriculum_complete && (
           <div className="flex justify-end">
             <button

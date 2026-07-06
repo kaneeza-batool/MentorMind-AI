@@ -86,6 +86,7 @@ class ReflectionAgent:
         total: int,
         weak_concepts: list,
         previous_topics: list,
+        adapted_context: str = "",
     ) -> dict:
         """
         Generate a personalized reflection from quiz results.
@@ -116,6 +117,8 @@ class ReflectionAgent:
             "Respond with valid JSON only — no markdown fences, no preamble, no explanation."
         )
 
+        adapt_note = f"\nCurriculum context: {adapted_context}" if adapted_context else ""
+
         prompt = (
             f"Generate a personalized learning reflection for this learner:\n\n"
             f"Learning Goal: {goal}\n"
@@ -123,7 +126,7 @@ class ReflectionAgent:
             f"Current Topic: {topic}\n"
             f"Quiz Score: {correct}/{total} ({score:.0f}%)\n"
             f"{weak_str}\n"
-            f"{prev_ctx}\n\n"
+            f"{prev_ctx}{adapt_note}\n\n"
             "Return ONLY a JSON object with this exact structure:\n"
             "{\n"
             '  "summary": "2-3 sentences. Personalized, references the specific topic and performance context. Never just restates the score.",\n'

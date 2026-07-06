@@ -7,11 +7,11 @@ const useLearningStore = create(
       // ── Onboarding ───────────────────────────────────────────────
       skill:          '',
       goal:           '',
-      level:          '',        // beginner | intermediate | advanced
+      level:          '',
       dailyMinutes:   30,
-      deadline:       '60',      // '30' | '60' | '90' | 'custom'
+      deadline:       '60',
       deadlineCustom: '',
-      learningStyle:  '',        // visual | hands-on | reading | mixed
+      learningStyle:  '',
 
       setField:      (key, val) => set({ [key]: val }),
       setOnboarding: (data)     => set(data),
@@ -26,29 +26,34 @@ const useLearningStore = create(
       lessonLoading:  false,
       lessonComplete: false,
       streamError:    null,
-      lessonHistory:  {},   // { topicId: { completedAt, wordCount, estimatedMinutes } }
-      whyExplanation: {},   // { topicId: string }
+      lessonHistory:  {},
+      whyExplanation: {},
 
       // ── Quiz ─────────────────────────────────────────────────────
       quizQuestions:  [],
       quizResults:    null,
       pendingExplain: null,
       quizLoading:    false,
-      quizFeedback:   {},   // { [topicId]: string }
+      quizFeedback:   {},
 
       // ── Progress ─────────────────────────────────────────────────
       mastery:   {},
       weakAreas: [],
 
+      // ── Adaptive curriculum ───────────────────────────────────────
+      curriculumAdapted:    false,    // true when the latest quiz triggered adaptation
+      curriculumAdaptCount: 0,        // total adaptations this session
+
       // ── Resources ────────────────────────────────────────────────
-      resources: {},   // { [topicId]: ResourceSchema[] }
+      resources: {},
 
       // ── Reflection ───────────────────────────────────────────────
       reflection:        null,
-      reflectionHistory: {},   // { [topicId]: reflectionData }
+      reflectionHistory: {},
 
-      // ── Dashboard ────────────────────────────────────────────────
-      dashboardData: null,
+      // ── Dashboard & Analytics ─────────────────────────────────────
+      dashboardData:  null,
+      analyticsData:  null,
 
       // ── Actions ──────────────────────────────────────────────────
       initSession: ({ sessionId, curriculum }) =>
@@ -58,7 +63,9 @@ const useLearningStore = create(
             ...t,
             status: t.status ?? (i === 0 ? 'active' : 'locked'),
           })),
-          currentTopicIndex: 0,
+          currentTopicIndex:    0,
+          curriculumAdapted:    false,
+          curriculumAdaptCount: 0,
         }),
 
       setCurrentTopic: (i) =>
@@ -90,14 +97,48 @@ const useLearningStore = create(
       setWhyExplanation: (topicId, text) =>
         set((s) => ({ whyExplanation: { ...s.whyExplanation, [topicId]: text } })),
 
-      setQuizQuestions:  (qs)            => set({ quizQuestions: qs, quizResults: null }),
-      setQuizResults:    (r)             => set({ quizResults: r }),
-      setPendingExplain: (p)             => set({ pendingExplain: p }),
-      setQuizLoading:    (v)             => set({ quizLoading: v }),
-      setQuizFeedback:   (topicId, text) =>
+      setQuizQuestions:  (qs)             => set({ quizQuestions: qs, quizResults: null }),
+      setQuizResults:    (r)              => set({ quizResults: r }),
+      setPendingExplain: (p)              => set({ pendingExplain: p }),
+      setQuizLoading:    (v)              => set({ quizLoading: v }),
+      setQuizFeedback:   (topicId, text)  =>
         set((s) => ({ quizFeedback: { ...s.quizFeedback, [topicId]: text } })),
 
-      // Mark the current topic completed, unlock the next, and advance the index.
+      // Called after quiz submit with the full server response
+      handleQuizSubmit: (topicId, serverResponse) =>
+        set((s) => {
+          const adapted = serverResponse?.curriculum_adapted ?? false
+          return {
+            quizResults:          serverResponse,
+            mastery:              {
+              ...s.mastery,
+              [topicId]: serverResponse?.mastery_delta != null
+                ? Math.min(100, (s.mastery[topicId] ?? 0) + serverResponse.mastery_delta)
+                : s.mastery[topicId] ?? 0,
+            },
+            weakAreas:            serverResponse?.weak_concepts ?? s.weakAreas,
+            curriculumAdapted:    adapted,
+            curriculumAdaptCount: adapted
+              ? s.curriculumAdaptCount + 1
+              : s.curriculumAdaptCount,
+          }
+        }),
+
+      // Sync curriculum from server (called when adaptation is detected)
+      syncCurriculum: (serverTopics) =>
+        set((s) => ({
+          curriculum: s.curriculum.map((local) => {
+            const server = serverTopics.find((t) => t.id === local.id)
+            if (!server) return local
+            // Only update locked topics — preserve completed/active status client-side
+            if (local.status === 'locked') {
+              return { ...local, title: server.title, description: server.description }
+            }
+            return local
+          }),
+          curriculumAdapted: false,  // reset banner after sync
+        })),
+
       completeCurrentTopic: () =>
         set((s) => {
           const i      = s.currentTopicIndex
@@ -109,7 +150,6 @@ const useLearningStore = create(
           })
           return {
             curriculum:        updated,
-            // Stay at last index when completing the final topic (no next topic to advance to)
             currentTopicIndex: isLast ? i : Math.min(i + 1, s.curriculum.length - 1),
             lessonContent:     '',
             lessonComplete:    false,
@@ -117,6 +157,7 @@ const useLearningStore = create(
             quizQuestions:     [],
             quizResults:       null,
             reflection:        null,
+            curriculumAdapted: false,
           }
         }),
 
@@ -132,7 +173,8 @@ const useLearningStore = create(
       setReflectionHistory: (topicId, data) =>
         set((s) => ({ reflectionHistory: { ...s.reflectionHistory, [topicId]: data } })),
 
-      setDashboardData: (data) => set({ dashboardData: data }),
+      setDashboardData:  (data) => set({ dashboardData: data }),
+      setAnalyticsData:  (data) => set({ analyticsData: data }),
 
       advanceTopic: () =>
         set((s) => ({
@@ -155,6 +197,7 @@ const useLearningStore = create(
           quizLoading: false, quizFeedback: {},
           mastery: {}, weakAreas: [], resources: {},
           reflection: null, reflectionHistory: {}, dashboardData: null,
+          analyticsData: null, curriculumAdapted: false, curriculumAdaptCount: 0,
         }),
 
       // ── Selectors ────────────────────────────────────────────────
@@ -189,6 +232,7 @@ const useLearningStore = create(
         resources:         s.resources,
         reflectionHistory: s.reflectionHistory,
         dashboardData:     s.dashboardData,
+        curriculumAdaptCount: s.curriculumAdaptCount,
       }),
     }
   )

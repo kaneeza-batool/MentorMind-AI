@@ -1,21 +1,9 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { createLessonStream } from '@/services/api'
+import { createLessonStream, learning as learningApi } from '@/services/api'
 import useLearningStore from '@/store/learningStore'
 
 const MAX_RETRIES = 2
 
-/**
- * Opens an SSE connection to /learn/stream and pipes chunks into the Zustand store.
- *
- * Named SSE events used (must match backend):
- *   chunk        — a piece of lesson markdown
- *   done         — stream finished
- *   stream_error — backend-reported error (avoids clashing with the browser's
- *                  reserved 'error' EventSource event)
- *
- * Retry counts are tracked per-topic so switching topics always grants
- * a fresh set of MAX_RETRIES — no shared counter that bleeds across topics.
- */
 export default function useStream(sessionId, topicId, { enabled = false } = {}) {
   const appendLesson      = useLearningStore((s) => s.appendLesson)
   const setLoading        = useLearningStore((s) => s.setLessonLoading)
@@ -25,9 +13,8 @@ export default function useStream(sessionId, topicId, { enabled = false } = {}) 
   const saveLessonHistory = useLearningStore((s) => s.saveLessonHistory)
 
   const sourceRef   = useRef(null)
-  // Retry counts keyed by topicId — switching topics preserves independent counts
+  const startRef    = useRef(null)  // lesson start timestamp for study-time tracking
   const attemptsRef = useRef({})
-  // Incrementing this re-triggers the effect for a retry without changing topicId
   const [retryTick, setRetryTick] = useState(0)
 
   useEffect(() => {
@@ -35,6 +22,7 @@ export default function useStream(sessionId, topicId, { enabled = false } = {}) 
 
     clearLesson()
     setLoading(true)
+    startRef.current = Date.now()
 
     const source = createLessonStream(sessionId, topicId)
     sourceRef.current = source
@@ -48,17 +36,20 @@ export default function useStream(sessionId, topicId, { enabled = false } = {}) 
       setComplete(true)
       saveLessonHistory(topicId)
       source.close()
+
+      // Record study time on backend (fire-and-forget — don't block the UI)
+      const elapsedMinutes = Math.max(1, Math.round((Date.now() - startRef.current) / 60_000))
+      learningApi
+        .complete(sessionId, topicId, elapsedMinutes)
+        .catch(() => { /* non-critical */ })
     })
 
-    // Backend-reported application error (named 'stream_error' to avoid the
-    // reserved browser EventSource 'error' event).
     source.addEventListener('stream_error', (e) => {
       setLoading(false)
       setError(e.data || 'Lesson generation failed. Please retry.')
       source.close()
     })
 
-    // Network / HTTP error (connection refused, 5xx, etc.)
     source.onerror = () => {
       if (source.readyState !== EventSource.CLOSED) {
         setLoading(false)
@@ -68,7 +59,7 @@ export default function useStream(sessionId, topicId, { enabled = false } = {}) 
     }
 
     return () => source.close()
-  }, [enabled, sessionId, topicId, retryTick])
+  }, [enabled, sessionId, topicId, retryTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const retry = useCallback(() => {
     const attempts = attemptsRef.current[topicId] ?? 0

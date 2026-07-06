@@ -1,17 +1,19 @@
 import logging
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException
-from models.schemas import ProgressResponse, DashboardResponse, TopicMasteryItem
+from models.schemas import (
+    ProgressResponse, DashboardResponse, TopicMasteryItem,
+    AnalyticsResponse, TopicScorePoint,
+)
 from tools import storage
 
 logger = logging.getLogger(__name__)
-
 router = APIRouter()
 
 
 @router.get("/progress", response_model=ProgressResponse)
 async def get_progress(session_id: str):
-    session = storage.get_session(session_id)
+    session = await storage.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
@@ -30,7 +32,7 @@ async def get_progress(session_id: str):
 
 @router.get("/progress/adapt")
 async def adapt_path(session_id: str):
-    session = storage.get_session(session_id)
+    session = await storage.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
@@ -40,6 +42,7 @@ async def adapt_path(session_id: str):
             "adapt": False,
             "reason": "Strong performance across all topics. No curriculum changes needed.",
             "suggestions": [],
+            "curriculum_versions": len(session.curriculum_versions),
         }
 
     return {
@@ -49,12 +52,13 @@ async def adapt_path(session_id: str):
             {"action": "review", "concept": area, "priority": "high"}
             for area in weak[:3]
         ],
+        "curriculum_versions": len(session.curriculum_versions),
     }
 
 
 @router.get("/dashboard", response_model=DashboardResponse)
 async def get_dashboard(session_id: str):
-    session = storage.get_session(session_id)
+    session = await storage.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
@@ -67,15 +71,12 @@ async def get_dashboard(session_id: str):
 
     overall_progress = round(completed_count / total * 100, 1) if total > 0 else 0.0
 
-    # Average quiz score
     scores    = [qr.score for qr in session.quiz_results]
     avg_score = round(sum(scores) / len(scores), 1) if scores else 0.0
 
-    # Overall mastery: average of stored mastery scores (0 for incomplete topics)
     mastery_vals    = [session.mastery.get(t.id, 0.0) for t in curriculum]
     overall_mastery = round(sum(mastery_vals) / len(mastery_vals), 1) if mastery_vals else 0.0
 
-    # Streak: consecutive completed topics from the beginning
     streak = 0
     for t in curriculum:
         if t.status == "completed":
@@ -93,16 +94,16 @@ async def get_dashboard(session_id: str):
     else:
         completion_estimate = f"{remaining} topics remaining"
 
-    # Learning velocity: topics completed per day since session was created
     try:
-        created = datetime.fromisoformat(session.created_at.replace("Z", "+00:00"))
-        now     = datetime.now(timezone.utc)
-        days    = max(1.0, (now - created).total_seconds() / 86400)
+        created  = datetime.fromisoformat(session.created_at.replace("Z", "+00:00"))
+        now      = datetime.now(timezone.utc)
+        days     = max(1.0, (now - created).total_seconds() / 86400)
         velocity = round(completed_count / days, 2)
     except Exception:
         velocity = 0.0
 
-    # Mastery breakdown per topic
+    total_study_seconds = sum(session.study_time.values())
+
     mastery_items = []
     for t in curriculum:
         score      = session.mastery.get(t.id, 0.0)
@@ -133,4 +134,93 @@ async def get_dashboard(session_id: str):
         learning_velocity=velocity,
         curriculum_complete=curriculum_complete,
         mastery_by_topic=mastery_items,
+        total_study_minutes=round(total_study_seconds / 60),
+        curriculum_adaptations=len(session.curriculum_versions),
+    )
+
+
+@router.get("/analytics", response_model=AnalyticsResponse)
+async def get_analytics(session_id: str):
+    """Detailed learning analytics for Mission Control."""
+    session = await storage.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    curriculum = session.curriculum
+    completed  = [t for t in curriculum if t.status == "completed"]
+
+    # Quiz score trend (chronological)
+    score_trend = [
+        TopicScorePoint(
+            topic_id=qr.topic_id,
+            title=next((t.title for t in curriculum if t.id == qr.topic_id), qr.topic_id),
+            score=qr.score,
+            taken_at=qr.taken_at,
+        )
+        for qr in session.quiz_results
+    ]
+
+    # Strongest and weakest topic
+    completed_mastery = [
+        (t.id, t.title, session.mastery.get(t.id, 0.0))
+        for t in completed
+    ]
+    strongest_topic = None
+    weakest_topic   = None
+    if completed_mastery:
+        best  = max(completed_mastery, key=lambda x: x[2])
+        worst = min(completed_mastery, key=lambda x: x[2])
+        strongest_topic = {"topic_id": best[0],  "title": best[1],  "mastery": best[2]}
+        weakest_topic   = {"topic_id": worst[0], "title": worst[1], "mastery": worst[2]}
+
+    # Study time
+    study_time_by_topic = {
+        t.id: {
+            "title":   t.title,
+            "minutes": round(session.study_time.get(t.id, 0) / 60, 1),
+        }
+        for t in curriculum
+    }
+    total_study_minutes = round(sum(session.study_time.values()) / 60, 1)
+
+    # Completion forecast
+    try:
+        created  = datetime.fromisoformat(session.created_at.replace("Z", "+00:00"))
+        now      = datetime.now(timezone.utc)
+        days     = max(1.0, (now - created).total_seconds() / 86400)
+        n_done   = len(completed)
+        n_remain = len(curriculum) - n_done
+        velocity = n_done / days if n_done > 0 else 0.0
+        forecast_days = round(n_remain / velocity) if velocity > 0 else None
+    except Exception:
+        forecast_days = None
+
+    # Overall mastery trend (computed per quiz result in order)
+    mastery_snapshot: dict[str, float] = {}
+    mastery_trend = []
+    for qr in session.quiz_results:
+        mastery_snapshot[qr.topic_id] = min(
+            100.0,
+            mastery_snapshot.get(qr.topic_id, 0.0) + round(qr.score * 0.4, 1)
+        )
+        overall = (
+            round(sum(mastery_snapshot.values()) / len(curriculum), 1)
+            if curriculum else 0.0
+        )
+        mastery_trend.append({"taken_at": qr.taken_at, "overall_mastery": overall})
+
+    return AnalyticsResponse(
+        session_id=session_id,
+        score_trend=score_trend,
+        mastery_trend=mastery_trend,
+        strongest_topic=strongest_topic,
+        weakest_topic=weakest_topic,
+        study_time_by_topic=study_time_by_topic,
+        total_study_minutes=total_study_minutes,
+        quizzes_taken=len(session.quiz_results),
+        topics_completed=len(completed),
+        topics_remaining=len(curriculum) - len(completed),
+        completion_forecast_days=forecast_days,
+        curriculum_adaptations=len(session.curriculum_versions),
+        weak_areas=session.weak_areas,
     )

@@ -6,22 +6,24 @@ from models.schemas import (
     QuizFeedbackRequest, QuizFeedbackResponse,
 )
 from agents.coach_agent import CoachAgent
+from agents.strategist_agent import StrategistAgent
 from tools import storage
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/quiz")
 
 PASS_THRESHOLD = 70.0
-_coach = CoachAgent()
+_coach      = CoachAgent()
+_strategist = StrategistAgent()
 
-# session_id → topic_id → list of full question dicts (id, question, options, answer int, explanation)
+# session_id → topic_id → list of full question dicts (id, question, options, answer, explanation)
 # Answers are never sent to the frontend — only used for server-side grading.
 _quiz_cache: dict[str, dict[str, list[dict]]] = {}
 
 
 @router.post("/generate", response_model=QuizGenerateResponse)
 async def generate_quiz(body: QuizGenerateRequest):
-    session = storage.get_session(body.session_id)
+    session = await storage.get_session(body.session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
@@ -39,10 +41,8 @@ async def generate_quiz(body: QuizGenerateRequest):
             detail="Quiz generation temporarily unavailable. Please retry.",
         )
 
-    # Cache full question data (including answers) server-side
     _quiz_cache.setdefault(body.session_id, {})[body.topic_id] = questions
 
-    # Return questions only — no answer or explanation exposed before submission
     return QuizGenerateResponse(
         questions=[
             QuizQuestion(id=q["id"], question=q["question"], options=q["options"])
@@ -53,7 +53,7 @@ async def generate_quiz(body: QuizGenerateRequest):
 
 @router.post("/submit", response_model=QuizSubmitResponse)
 async def submit_quiz(body: QuizSubmitRequest):
-    session = storage.get_session(body.session_id)
+    session = await storage.get_session(body.session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
@@ -74,7 +74,7 @@ async def submit_quiz(body: QuizSubmitRequest):
         if not q_data:
             continue
         correct_idx = int(q_data["answer"])
-        is_correct = submission.answer == correct_idx
+        is_correct  = submission.answer == correct_idx
         if is_correct:
             correct_count += 1
         else:
@@ -117,6 +117,28 @@ async def submit_quiz(body: QuizSubmitRequest):
                         session.curriculum[i + 1].status = "active"
                 break
 
+    # Adaptive curriculum — trigger only when learner is struggling
+    adapted = False
+    if coach_result["should_adapt"]:
+        logger.info(
+            "CoachAgent signalled adaptation for session %s (topic %s, mastery=%.1f)",
+            body.session_id, body.topic_id, coach_result["new_mastery"],
+        )
+        adapted = await _strategist.adapt_remaining(
+            session=session,
+            weak_areas=coach_result["weak_areas"],
+        )
+        if adapted:
+            logger.info(
+                "Curriculum adapted — %d version(s) recorded for session %s",
+                len(session.curriculum_versions), body.session_id,
+            )
+            # Invalidate cached resources for affected topics (they'll be regenerated
+            # with the updated weak-area context on the next /resources request)
+            for topic in session.curriculum:
+                if topic.status == "locked" and topic.id in session.resources:
+                    del session.resources[topic.id]
+
     # Record quiz result in session history
     from models.state import QuizResult
     session.quiz_results.append(QuizResult(
@@ -126,7 +148,7 @@ async def submit_quiz(body: QuizSubmitRequest):
         correct=correct_count,
         weak_concepts=weak_concepts,
     ))
-    storage.update_session(session)
+    await storage.update_session(session)
 
     return QuizSubmitResponse(
         score=score,
@@ -136,12 +158,13 @@ async def submit_quiz(body: QuizSubmitRequest):
         results=results,
         mastery_delta=mastery_delta,
         weak_concepts=weak_concepts,
+        curriculum_adapted=adapted,
     )
 
 
 @router.post("/feedback", response_model=QuizFeedbackResponse)
 async def quiz_feedback(body: QuizFeedbackRequest):
-    session = storage.get_session(body.session_id)
+    session = await storage.get_session(body.session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
@@ -163,7 +186,6 @@ async def quiz_feedback(body: QuizFeedbackRequest):
         return QuizFeedbackResponse(feedback=text)
     except Exception as exc:
         logger.exception("Feedback generation failed: %s", exc)
-        # Non-critical — return a static fallback so the UI doesn't hang
         pct = int(body.score)
         if pct >= 90:
             msg = "Excellent work! Your understanding of this topic is strong — you're ready to move on."

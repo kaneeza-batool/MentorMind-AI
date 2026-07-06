@@ -3,10 +3,10 @@ import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Brain, ChevronLeft, ChevronRight,
-  RotateCcw, BookOpen, AlertTriangle, Loader2, ArrowRight,
+  RotateCcw, BookOpen, AlertTriangle, Loader2, ArrowRight, Sparkles,
 } from 'lucide-react'
 import useLearningStore from '@/store/learningStore'
-import { quiz as quizApi } from '@/services/api'
+import { quiz as quizApi, sessions as sessionsApi } from '@/services/api'
 import QuizCard from '@/components/quiz/QuizCard'
 import ResultBanner from '@/components/quiz/ResultBanner'
 import ExplanationDrawer from '@/components/quiz/ExplanationDrawer'
@@ -63,7 +63,7 @@ export default function Quiz() {
 
   const {
     sessionId, curriculum, currentTopicIndex, level,
-    updateMastery,
+    handleQuizSubmit, syncCurriculum,
   } = useLearningStore()
 
   const currentTopic = curriculum[currentTopicIndex] ?? null
@@ -137,7 +137,14 @@ export default function Quiz() {
 
       setResults(data)
       setPhase('results')
-      updateMastery(currentTopic.id, data.score)
+      handleQuizSubmit(currentTopic.id, data)
+
+      // If the curriculum was adapted, sync updated topic titles from server
+      if (data.curriculum_adapted) {
+        sessionsApi.get(sessionId)
+          .then(({ data: sess }) => syncCurriculum(sess.curriculum))
+          .catch(() => {})
+      }
 
       // Fire feedback concurrently — non-blocking; result shown when ready
       const wrongQs = questions
@@ -356,6 +363,27 @@ export default function Quiz() {
                 score={results.score}
                 passed={results.passed}
               />
+
+              {/* Adaptive curriculum banner */}
+              {results.curriculum_adapted && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="mt-4 flex items-start gap-3 px-4 py-3.5 rounded-xl
+                             bg-reflection/8 border border-reflection/25"
+                  role="status"
+                >
+                  <Sparkles size={15} className="text-reflection flex-shrink-0 mt-0.5" aria-hidden="true" />
+                  <div>
+                    <p className="text-sm font-semibold text-text-primary">
+                      Curriculum adapted
+                    </p>
+                    <p className="text-xs text-text-muted mt-0.5 leading-relaxed">
+                      Your mentor has updated the remaining topics to focus on your weak areas.
+                    </p>
+                  </div>
+                </motion.div>
+              )}
 
               {/* AI feedback */}
               <div className="mt-5 mb-6 rounded-xl border border-border bg-bg-card p-4">
