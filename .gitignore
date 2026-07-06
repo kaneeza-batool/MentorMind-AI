@@ -1,0 +1,37 @@
+# ── Dependencies ─────────────────────────────────────────────────
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# ── Build output ──────────────────────────────────────────────────
+frontend/dist/
+
+# ── Environment / secrets ────────────────────────────────────────
+.env
+*.env.local
+*.env.*.local
+
+# ── Python virtual envs ───────────────────────────────────────────
+venv/
+.venv/
+env/
+.env/
+
+# ── Vite / tooling cache ──────────────────────────────────────────
+frontend/.vite/
+.vite/
+
+# ── OS / editor ───────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ── Logs ─────────────────────────────────────────────────────────
+*.log
+npm-debug.log*
