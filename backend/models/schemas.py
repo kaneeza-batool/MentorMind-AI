@@ -140,22 +140,27 @@ class DashboardResponse(BaseModel):
     overall_progress:    float
     current_topic:       Optional[str]
     topics_completed:    int
+    topics_remaining:    int
     total_topics:        int
     average_score:       float
+    overall_mastery:     float
     completion_estimate: str
     streak:              int
+    learning_velocity:   float   # topics completed per day
     curriculum_complete: bool
     mastery_by_topic:    list[TopicMasteryItem]
 
 
 # ── Resources ────────────────────────────────────────────────────
 class ResourceSchema(BaseModel):
-    title:       str
-    url:         str
-    type:        str   # article | video | course | docs | repo
-    source:      str
-    why:         str
-    duration:    Optional[str] = None
+    title:      str
+    url:        str
+    type:       str            # article | video | course | docs | repo
+    source:     str
+    why:        str
+    duration:   Optional[str] = None
+    difficulty: Optional[str] = None  # beginner | intermediate | advanced
+    category:   Optional[str] = None  # video | article | practice | project
 
 
 class ResourcesResponse(BaseModel):

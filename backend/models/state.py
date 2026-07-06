@@ -47,4 +47,6 @@ class LearningSession:
     lesson_history:  dict = field(default_factory=dict)
     # { topic_id: { summary, strengths, weaknesses, recommendation, confidence } }
     reflections:     dict = field(default_factory=dict)
+    # { topic_id: list[dict] } — cached AI-generated resources per topic
+    resources:       dict = field(default_factory=dict)
     created_at:      str  = field(default_factory=lambda: datetime.utcnow().isoformat())

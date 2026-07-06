@@ -29,7 +29,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="MentorMind AI",
     description="Multi-agent personalized learning system powered by Google Gemini + ADK",
-    version="0.4.0",
+    version="0.8.0",
     lifespan=lifespan,
 )
 

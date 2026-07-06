@@ -1,6 +1,10 @@
+import logging
+from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException
 from models.schemas import ProgressResponse, DashboardResponse, TopicMasteryItem
 from tools import storage
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -63,9 +67,13 @@ async def get_dashboard(session_id: str):
 
     overall_progress = round(completed_count / total * 100, 1) if total > 0 else 0.0
 
-    # Average score: latest quiz result per topic
-    scores = [qr.score for qr in session.quiz_results]
+    # Average quiz score
+    scores    = [qr.score for qr in session.quiz_results]
     avg_score = round(sum(scores) / len(scores), 1) if scores else 0.0
+
+    # Overall mastery: average of stored mastery scores (0 for incomplete topics)
+    mastery_vals    = [session.mastery.get(t.id, 0.0) for t in curriculum]
+    overall_mastery = round(sum(mastery_vals) / len(mastery_vals), 1) if mastery_vals else 0.0
 
     # Streak: consecutive completed topics from the beginning
     streak = 0
@@ -76,14 +84,23 @@ async def get_dashboard(session_id: str):
             break
 
     curriculum_complete = (completed_count == total and total > 0)
+    remaining           = total - completed_count
 
-    remaining = total - completed_count
     if curriculum_complete:
         completion_estimate = "Curriculum complete!"
     elif remaining == 1:
         completion_estimate = "1 topic remaining"
     else:
         completion_estimate = f"{remaining} topics remaining"
+
+    # Learning velocity: topics completed per day since session was created
+    try:
+        created = datetime.fromisoformat(session.created_at.replace("Z", "+00:00"))
+        now     = datetime.now(timezone.utc)
+        days    = max(1.0, (now - created).total_seconds() / 86400)
+        velocity = round(completed_count / days, 2)
+    except Exception:
+        velocity = 0.0
 
     # Mastery breakdown per topic
     mastery_items = []
@@ -107,10 +124,13 @@ async def get_dashboard(session_id: str):
         overall_progress=overall_progress,
         current_topic=active_topic.title if active_topic else None,
         topics_completed=completed_count,
+        topics_remaining=remaining,
         total_topics=total,
         average_score=avg_score,
+        overall_mastery=overall_mastery,
         completion_estimate=completion_estimate,
         streak=streak,
+        learning_velocity=velocity,
         curriculum_complete=curriculum_complete,
         mastery_by_topic=mastery_items,
     )
