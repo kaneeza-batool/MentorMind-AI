@@ -44,7 +44,11 @@ const useLearningStore = create((set, get) => ({
   resources: {},
 
   // ── Reflection ───────────────────────────────────────────────
-  reflection: null,
+  reflection:        null,
+  reflectionHistory: {},   // { [topicId]: reflectionData } — cached per topic
+
+  // ── Dashboard ────────────────────────────────────────────────
+  dashboardData: null,
 
   // ── Actions ──────────────────────────────────────────────────
   initSession: ({ sessionId, curriculum }) =>
@@ -125,7 +129,12 @@ const useLearningStore = create((set, get) => ({
   setResources: (topicId, list) =>
     set((s) => ({ resources: { ...s.resources, [topicId]: list } })),
 
-  setReflection: (r)          => set({ reflection: r }),
+  setReflection: (r) => set({ reflection: r }),
+
+  setReflectionHistory: (topicId, data) =>
+    set((s) => ({ reflectionHistory: { ...s.reflectionHistory, [topicId]: data } })),
+
+  setDashboardData: (data) => set({ dashboardData: data }),
 
   advanceTopic: () =>
     set((s) => ({
@@ -146,7 +155,8 @@ const useLearningStore = create((set, get) => ({
       lessonHistory: {}, whyExplanation: {},
       quizQuestions: [], quizResults: null, pendingExplain: null,
       quizLoading: false, quizFeedback: {},
-      mastery: {}, weakAreas: [], resources: {}, reflection: null,
+      mastery: {}, weakAreas: [], resources: {},
+      reflection: null, reflectionHistory: {}, dashboardData: null,
     }),
 
   // ── Selectors ────────────────────────────────────────────────

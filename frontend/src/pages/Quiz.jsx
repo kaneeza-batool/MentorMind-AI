@@ -63,7 +63,7 @@ export default function Quiz() {
 
   const {
     sessionId, curriculum, currentTopicIndex, level,
-    updateMastery, completeCurrentTopic,
+    updateMastery,
   } = useLearningStore()
 
   const currentTopic = curriculum[currentTopicIndex] ?? null
@@ -168,9 +168,8 @@ export default function Quiz() {
   }, [allAnswered, sessionId, currentTopic, questions, answers, updateMastery])
 
   const handleNextTopic = useCallback(() => {
-    completeCurrentTopic()
-    navigate('/learn')
-  }, [completeCurrentTopic, navigate])
+    navigate('/reflection')
+  }, [navigate])
 
   const handleRetake = useCallback(() => {
     setRetakeKey((k) => k + 1)
@@ -411,7 +410,7 @@ export default function Quiz() {
                     onClick={handleNextTopic}
                     className="btn-primary btn-sm gap-1.5 sm:ml-auto"
                   >
-                    Next Topic <ArrowRight size={14} aria-hidden="true" />
+                    View Reflection <ArrowRight size={14} aria-hidden="true" />
                   </button>
                 ) : (
                   <button

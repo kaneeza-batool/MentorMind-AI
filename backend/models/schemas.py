@@ -110,15 +110,42 @@ class ExplainResponse(BaseModel):
 
 # ── Reflection ───────────────────────────────────────────────────
 class ReflectRequest(BaseModel):
-    session_id:  str
+    session_id:   str
+    topic_id:     str = ""
     quiz_results: dict
 
 
 class ReflectResponse(BaseModel):
-    narrative:   str
-    strengths:   list[str]
-    weak_areas:  list[str]
-    next_step:   str
+    summary:        str
+    strengths:      list[str]
+    weaknesses:     list[str]
+    recommendation: str
+    confidence:     int = 70
+
+
+# ── Dashboard ─────────────────────────────────────────────────────
+class TopicMasteryItem(BaseModel):
+    topic_id:   str
+    title:      str
+    score:      float
+    confidence: int
+    completed:  bool
+
+
+class DashboardResponse(BaseModel):
+    session_id:          str
+    skill:               str
+    goal:                str
+    level:               str
+    overall_progress:    float
+    current_topic:       Optional[str]
+    topics_completed:    int
+    total_topics:        int
+    average_score:       float
+    completion_estimate: str
+    streak:              int
+    curriculum_complete: bool
+    mastery_by_topic:    list[TopicMasteryItem]
 
 
 # ── Resources ────────────────────────────────────────────────────

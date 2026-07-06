@@ -32,7 +32,7 @@ export const quiz = {
 
 // ── Reflection ──────────────────────────────────────────────────
 export const reflection = {
-  generate: (data)   => http.post('/reflect', data),
+  generate: (data) => http.post('/reflect', data, { timeout: 45_000 }),
 }
 
 // ── Resources ───────────────────────────────────────────────────
@@ -43,8 +43,9 @@ export const resources = {
 
 // ── Progress ────────────────────────────────────────────────────
 export const progress = {
-  get:    (sessionId) => http.get('/progress',       { params: { session_id: sessionId } }),
-  adapt:  (sessionId) => http.get('/progress/adapt', { params: { session_id: sessionId } }),
+  get:       (sessionId) => http.get('/progress',       { params: { session_id: sessionId } }),
+  adapt:     (sessionId) => http.get('/progress/adapt', { params: { session_id: sessionId } }),
+  dashboard: (sessionId) => http.get('/dashboard',      { params: { session_id: sessionId } }),
 }
 
 // ── SSE helper — lesson streaming ───────────────────────────────
