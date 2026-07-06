@@ -16,8 +16,9 @@ export const sessions = {
 
 // ── Learning (lesson streaming handled via EventSource) ─────────
 export const learning = {
-  start: (data)      => http.post('/learn', data),
-  next:  (data)      => http.post('/next', data),
+  start: (data)                    => http.post('/learn', data),
+  next:  (data)                    => http.post('/next', data),
+  why:   (sessionId, topicId)      => http.get('/learn/why', { params: { session_id: sessionId, topic_id: topicId } }),
 }
 
 // ── Quiz ────────────────────────────────────────────────────────
