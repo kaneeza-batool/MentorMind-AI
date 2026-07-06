@@ -37,6 +37,9 @@ class Settings:
     # Set to "false" in CI to skip live URL validation
     VALIDATE_RESOURCE_URLS: bool = os.getenv("VALIDATE_RESOURCE_URLS", "false").lower() == "true"
 
+    # ── Logging ───────────────────────────────────────────────────────
+    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO").upper()
+
     # ── Application ───────────────────────────────────────────────────
     APP_VERSION: str = "1.0.0"
     APP_NAME:    str = "MentorMind AI"

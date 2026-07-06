@@ -172,7 +172,7 @@ export default function Quiz() {
       setErrorMsg('Quiz submission failed. Please try again.')
       setPhase('error')
     }
-  }, [allAnswered, sessionId, currentTopic, questions, answers, updateMastery])
+  }, [allAnswered, sessionId, currentTopic, questions, answers, handleQuizSubmit, syncCurriculum])
 
   const handleNextTopic = useCallback(() => {
     navigate('/reflection')

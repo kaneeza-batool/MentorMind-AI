@@ -16,6 +16,7 @@ from models.schemas import ResourceSchema, ResourcesResponse
 from agents.resource_agent import ResourceAgent
 from tools import storage
 from config import settings
+from routers._validators import validate_session_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -174,6 +175,7 @@ async def get_resources(topic: str, session_id: str):
     and weak areas, then validated and cached at both the agent level (in-process)
     and the session level (SQLite-persisted).
     """
+    validate_session_id(session_id)
     session = await storage.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")

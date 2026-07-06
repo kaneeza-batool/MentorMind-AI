@@ -16,4 +16,22 @@ export default defineConfig({
     port: 5173,
     host: true,
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // React core — loaded on every page
+          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+          // Animation library — used across pages but expensive
+          'motion': ['framer-motion'],
+          // Markdown rendering — only needed in Learning page
+          'markdown': ['react-markdown', 'remark-gfm', 'rehype-highlight'],
+          // State + HTTP — lightweight, loaded early
+          'store': ['zustand', 'axios'],
+        },
+      },
+    },
+    // Raise the warning threshold since we're now splitting intentionally
+    chunkSizeWarningLimit: 600,
+  },
 })

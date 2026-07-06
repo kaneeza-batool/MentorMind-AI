@@ -8,6 +8,7 @@ from models.schemas import (
 from agents.coach_agent import CoachAgent
 from agents.strategist_agent import StrategistAgent
 from tools import storage
+from routers._validators import validate_session_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/quiz")
@@ -23,6 +24,7 @@ _quiz_cache: dict[str, dict[str, list[dict]]] = {}
 
 @router.post("/generate", response_model=QuizGenerateResponse)
 async def generate_quiz(body: QuizGenerateRequest):
+    validate_session_id(body.session_id)
     session = await storage.get_session(body.session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -53,6 +55,7 @@ async def generate_quiz(body: QuizGenerateRequest):
 
 @router.post("/submit", response_model=QuizSubmitResponse)
 async def submit_quiz(body: QuizSubmitRequest):
+    validate_session_id(body.session_id)
     session = await storage.get_session(body.session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -164,6 +167,7 @@ async def submit_quiz(body: QuizSubmitRequest):
 
 @router.post("/feedback", response_model=QuizFeedbackResponse)
 async def quiz_feedback(body: QuizFeedbackRequest):
+    validate_session_id(body.session_id)
     session = await storage.get_session(body.session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")

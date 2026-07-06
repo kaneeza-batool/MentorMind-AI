@@ -5,6 +5,7 @@ from models.schemas import LessonRequest
 from tools import storage
 from tools.gemini_client import generate
 from agents.mentor_agent import MentorAgent
+from routers._validators import validate_session_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -66,6 +67,7 @@ async def _lesson_stream(session_id: str, topic_id: str, request: Request):
 
 @router.post("/learn", status_code=200)
 async def start_lesson(body: LessonRequest):
+    validate_session_id(body.session_id)
     session = await storage.get_session(body.session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -81,12 +83,14 @@ async def start_lesson(body: LessonRequest):
 
 @router.get("/learn/stream")
 async def stream_lesson(session_id: str, topic_id: str, request: Request):
+    validate_session_id(session_id)
     return EventSourceResponse(_lesson_stream(session_id, topic_id, request))
 
 
 @router.post("/learn/complete")
 async def complete_lesson(session_id: str, topic_id: str, study_minutes: int = 0):
     """Record study time for a completed lesson. Called by the frontend on stream done."""
+    validate_session_id(session_id)
     session = await storage.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -103,6 +107,7 @@ async def complete_lesson(session_id: str, topic_id: str, study_minutes: int = 0
 @router.get("/learn/why")
 async def why_this_topic(session_id: str, topic_id: str):
     """Returns a short AI-generated explanation connecting this topic to the learner's goal."""
+    validate_session_id(session_id)
     session = await storage.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -132,6 +137,7 @@ async def why_this_topic(session_id: str, topic_id: str):
 
 @router.post("/next")
 async def next_topic(session_id: str):
+    validate_session_id(session_id)
     session = await storage.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")

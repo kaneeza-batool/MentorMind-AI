@@ -1,16 +1,21 @@
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
 
 from config import settings
 from tools.storage import init_storage
+from routers import sessions, learning, quiz, explain, reflection, resources, progress
+from routers import mcp
 
-logger = logging.getLogger(__name__)
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(levelname)s  %(name)s  %(message)s",
+    level=getattr(logging, settings.LOG_LEVEL, logging.INFO),
+    format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%S",
 )
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -35,9 +40,6 @@ async def lifespan(app: FastAPI):
     logger.info("MentorMind AI shutting down.")
 
 
-from routers import sessions, learning, quiz, explain, reflection, resources, progress
-from routers import mcp
-
 app = FastAPI(
     title=settings.APP_NAME,
     description=(
@@ -47,16 +49,32 @@ app = FastAPI(
     ),
     version=settings.APP_VERSION,
     lifespan=lifespan,
+    docs_url="/docs",
+    redoc_url="/redoc",
 )
 
+# ── CORS ─────────────────────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "Accept"],
 )
 
+# ── Validation error handler — return consistent JSON ────────────────
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    logger.warning("Validation error on %s: %s", request.url.path, exc.errors())
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": "Request validation failed",
+            "errors": exc.errors(),
+        },
+    )
+
+# ── Routers ───────────────────────────────────────────────────────────
 app.include_router(sessions.router,   tags=["sessions"])
 app.include_router(learning.router,   tags=["learning"])
 app.include_router(quiz.router,       tags=["quiz"])
@@ -82,16 +100,16 @@ async def debug_agents():
         from adk.runner import get_runner
         runner = get_runner()
         return {
-            "status":       "ok",
-            "agents":       runner.registered_agents,
+            "status":        "ok",
+            "agents":        runner.registered_agents,
             "agent_configs": runner.root.agent_configs,
             "session_count": runner.session_service.session_count,
         }
     except RuntimeError as exc:
         from agents.root_agent import RootAgent
         return {
-            "status":       "ok",
-            "agents":       RootAgent().agent_names,
+            "status":        "ok",
+            "agents":        RootAgent().agent_names,
             "agent_configs": RootAgent().agent_configs,
-            "error":        str(exc),
+            "error":         str(exc),
         }

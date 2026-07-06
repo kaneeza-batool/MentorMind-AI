@@ -78,6 +78,18 @@ jobs:
           assert not _is_valid_url('javascript:void(0)')
           print('URL validator OK')
 
+          # Session ID validator
+          from routers._validators import validate_session_id
+          from fastapi import HTTPException
+          ok = validate_session_id('550e8400-e29b-41d4-a716-446655440000')
+          assert ok == '550e8400-e29b-41d4-a716-446655440000'
+          try:
+            validate_session_id('not-a-uuid')
+            assert False, 'Should have raised'
+          except HTTPException as e:
+            assert e.status_code == 400
+          print('Session ID validator OK')
+
           # Session model fields
           sess = LearningSession(id='ci-test', skill='test', goal='test', level='beginner')
           assert hasattr(sess, 'curriculum_versions'), 'Missing curriculum_versions field'

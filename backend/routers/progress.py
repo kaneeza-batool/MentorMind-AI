@@ -6,6 +6,7 @@ from models.schemas import (
     AnalyticsResponse, TopicScorePoint,
 )
 from tools import storage
+from routers._validators import validate_session_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -13,6 +14,7 @@ router = APIRouter()
 
 @router.get("/progress", response_model=ProgressResponse)
 async def get_progress(session_id: str):
+    validate_session_id(session_id)
     session = await storage.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -32,6 +34,7 @@ async def get_progress(session_id: str):
 
 @router.get("/progress/adapt")
 async def adapt_path(session_id: str):
+    validate_session_id(session_id)
     session = await storage.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -58,6 +61,7 @@ async def adapt_path(session_id: str):
 
 @router.get("/dashboard", response_model=DashboardResponse)
 async def get_dashboard(session_id: str):
+    validate_session_id(session_id)
     session = await storage.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -142,6 +146,7 @@ async def get_dashboard(session_id: str):
 @router.get("/analytics", response_model=AnalyticsResponse)
 async def get_analytics(session_id: str):
     """Detailed learning analytics for Mission Control."""
+    validate_session_id(session_id)
     session = await storage.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")

@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException
 from models.schemas import ReflectRequest, ReflectResponse
 from agents.reflection_agent import ReflectionAgent
 from tools import storage
+from routers._validators import validate_session_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -11,6 +12,7 @@ _agent = ReflectionAgent()
 
 @router.post("/reflect", response_model=ReflectResponse)
 async def reflect(body: ReflectRequest):
+    validate_session_id(body.session_id)
     session = await storage.get_session(body.session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -43,7 +45,6 @@ async def reflect(body: ReflectRequest):
     # Include adaptation context if curriculum was recently adapted
     adapted_context = ""
     if session.curriculum_versions:
-        last = session.curriculum_versions[-1]
         adapted_context = (
             f"Note: The remaining curriculum was recently adapted because of weak areas in: "
             f"{', '.join(session.weak_areas[:3])}."

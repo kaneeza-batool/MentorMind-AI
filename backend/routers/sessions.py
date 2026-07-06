@@ -1,9 +1,10 @@
 import logging
 from fastapi import APIRouter, HTTPException
 from models.schemas import CreateSessionRequest, SessionResponse, TopicSchema
-from models.state import LearningSession, Topic
+from models.state import Topic
 from agents.strategist_agent import StrategistAgent
 from tools import storage
+from routers._validators import validate_session_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/sessions")
@@ -68,6 +69,7 @@ async def create_session(body: CreateSessionRequest):
 
 @router.get("/{session_id}")
 async def get_session(session_id: str):
+    validate_session_id(session_id)
     session = await storage.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
