@@ -43,4 +43,6 @@ class LearningSession:
     quiz_results:    list = field(default_factory=list)   # list[QuizResult]
     mastery:         dict = field(default_factory=dict)   # { topic_id: score }
     weak_areas:      list = field(default_factory=list)
+    # { topic_id: { completed_at, word_count } } — updated when a lesson stream finishes
+    lesson_history:  dict = field(default_factory=dict)
     created_at:      str  = field(default_factory=lambda: datetime.utcnow().isoformat())
